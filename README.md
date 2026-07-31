@@ -1,6 +1,4 @@
-# Image Detection with YOLOv8n - Srintami
-
-Proyek ini merupakan aplikasi deteksi gambar menggunakan YOLOv8n Ultralytics
+# PoC MCP
 
 ## Persiapan
 
@@ -52,7 +50,7 @@ pip install -r requirements.txt
 
 ## Menjalankan API
 
-Untuk melakukan deteksi gambar:
+Untuk melakukan uji coba fastpi:
 
 ```bash
 uvicorn main:app
