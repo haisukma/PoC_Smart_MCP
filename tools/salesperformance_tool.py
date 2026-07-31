@@ -3,7 +3,7 @@ from services_mcp.salesperformance_service import get_sales_performance
 def register_sales_performance_tools(mcp):
 
     @mcp.tool()
-    async def get_sales_performance_tool(limit: int = 20):
+    async def get_sales_performance_tool():
         """
         Mengambil data sales performance.
 
@@ -16,4 +16,4 @@ def register_sales_performance_tools(mcp):
 
         sales_performance = await get_sales_performance()
 
-        return sales_performance[:limit]
+        return sales_performance

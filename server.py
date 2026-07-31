@@ -13,7 +13,7 @@ mcp = FastMCP(
 register_asset_tools(mcp)
 register_neutron_tools(mcp)
 register_customer_tools(mcp)
-register_sales_performance_tools()
+register_sales_performance_tools(mcp)
 
 if __name__ == "__main__":
     mcp.run()

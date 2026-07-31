@@ -1,12 +1,15 @@
 import asyncio
 import json
 import os
+from dotenv import load_dotenv
 from ollama import Client
 from mcp import (
     ClientSession,
     StdioServerParameters
 )
 from mcp.client.stdio import stdio_client
+
+load_dotenv()
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST")
 MODEL_NAME = "gemma4:12b"
