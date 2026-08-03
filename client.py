@@ -42,9 +42,9 @@ Aturan:
   untuk menjawab pertanyaan user.
 - Jangan mengatakan data kosong jika tool sebenarnya
   mengembalikan data.
-- Jika data yang dikembalikan sangat banyak,
-  gunakan hanya data yang relevan dengan pertanyaan user.
 - Jangan memanggil tool yang tidak relevan.
+- Jika user meminta analisis, evaluasi, penilaian, atau perhitungan performance sales: Ambil terlebih dahulu data performance yang relevan menggunakan tool data, Setelah data diperoleh panggil tool get_sales_performance_knowledge, Gunakan data dan aturan tersebut untuk menyusun jawaban.
+- Jangan memanggil knowledge jika user hanya meminta data mentah.
 - Jawab dalam bahasa Indonesia.
 
 Berikan jawaban yang langsung, jelas, dan sesuai
@@ -199,7 +199,7 @@ async def chat(
 
         if not tool_calls:
 
-            print("\n=== HASIL GEMMA ===")
+            print("\nHASIL GEMMA")
             print(assistant_message.content)
 
             print(
