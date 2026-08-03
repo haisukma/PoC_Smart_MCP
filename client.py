@@ -163,7 +163,7 @@ async def chat(
 
     for iteration in range(max_iterations):
 
-        print(f"\n========== ITERATION {iteration + 1} ==========")
+        print(f"\nITERATION {iteration + 1}")
 
         response = ask_gemma(
             messages,
@@ -228,7 +228,7 @@ async def chat(
 
                     return error
 
-            print("\n=== MCP TOOL CALL ===")
+            print("\nMCP TOOL CALL")
             print("Tool :", tool_name)
 
             print("Arguments:")
@@ -281,13 +281,11 @@ async def close_mcp():
     if mcp_session:
 
         await mcp_session.__aexit__(None, None, None)
-
         mcp_session = None
 
     if stdio_context:
 
         await stdio_context.__aexit__(None, None, None)
-
         stdio_context = None
 
     ollama_tools = None
@@ -295,7 +293,6 @@ async def close_mcp():
 if __name__ == "__main__":
 
     user_input = input("\nApa yang ingin kamu cari?\n> ")
-
     result = asyncio.run(
         chat(user_input)
     )
