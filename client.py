@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import time
 from dotenv import load_dotenv
 from ollama import Client
 from mcp import (
@@ -10,6 +11,12 @@ from mcp import (
 from mcp.client.stdio import stdio_client
 
 load_dotenv()
+
+mcp_session = None
+stdio_context = None
+ollama_tools = None
+
+init_lock = asyncio.Lock()
 
 OLLAMA_HOST = os.getenv("OLLAMA_HOST")
 MODEL_NAME = "gemma4:12b"
@@ -43,6 +50,37 @@ Berikan jawaban yang langsung, jelas, dan sesuai
 dengan data yang diperoleh dari MCP.
 """
 
+async def initialize_mcp():
+
+    global mcp_session
+    global stdio_context
+    global ollama_tools
+
+    if mcp_session is not None:
+        return
+
+    async with init_lock:
+
+        if mcp_session is not None:
+            return
+
+    stdio_context = stdio_client(server_params)
+
+    read, write = await stdio_context.__aenter__()
+
+    mcp_session = ClientSession(read, write)
+
+    await mcp_session.__aenter__()
+
+    await mcp_session.initialize()
+
+    tools_result = await mcp_session.list_tools()
+
+    ollama_tools = convert_mcp_tools_to_ollama(
+        tools_result.tools
+    )
+
+    print("MCP initialized")
 
 def convert_mcp_tools_to_ollama(tools):
     ollama_tools = []
@@ -70,6 +108,8 @@ def convert_mcp_tools_to_ollama(tools):
 
 def ask_gemma(messages, tools=None):
 
+    start = time.time()
+
     kwargs = {
         "model": MODEL_NAME,
         "messages": messages
@@ -78,145 +118,183 @@ def ask_gemma(messages, tools=None):
     if tools:
         kwargs["tools"] = tools
 
-    return client.chat(**kwargs)
+    response = client.chat(**kwargs)
+
+    print(
+        "Gemma time:",
+        round(time.time()-start,2),
+        "detik"
+    )
+
+    return response
 
 
 async def chat(user_input: str):
 
-    async with stdio_client(server_params) as (read, write):
+    total_start = time.time()
 
-        async with ClientSession(read, write) as session:
+    # async with stdio_client(server_params) as (read, write):
 
-            await session.initialize()
+    #     async with ClientSession(read, write) as session:
 
-            tools_result = await session.list_tools()
-            mcp_tools = tools_result.tools
+    #         await session.initialize()
 
-            print("\n=== TOOLS TERSEDIA ===")
-            for tool in mcp_tools:
-                print(f"- {tool.name}")
+    #         tools_result = await session.list_tools()
 
-            ollama_tools = convert_mcp_tools_to_ollama(
-                mcp_tools
-            )
+    #         mcp_tools = tools_result.tools
 
-            messages = [
+    #         print("\n=== TOOLS TERSEDIA ===")
+    #         for tool in mcp_tools:
+    #             print(f"- {tool.name}")
+
+    #         ollama_tools = convert_mcp_tools_to_ollama(
+    #             mcp_tools
+    #         )
+    await initialize_mcp()
+
+    messages = [
+        {
+            "role": "system",
+            "content": SYSTEM_PROMPT
+        },
+        {
+            "role": "user",
+            "content": user_input
+        }
+    ]
+
+    max_iterations = 4
+
+    for iteration in range(max_iterations):
+
+        print(f"\n========== ITERATION {iteration + 1} ==========")
+
+        response = ask_gemma(
+            messages,
+            tools=ollama_tools
+        )
+
+        assistant_message = response.message
+
+        formatted_assistant = {
+            "role": "assistant",
+            "content": assistant_message.content or ""
+        }
+
+        if assistant_message.tool_calls:
+
+            formatted_assistant["tool_calls"] = [
+
                 {
-                    "role": "system",
-                    "content": SYSTEM_PROMPT
-                },
-                {
-                    "role": "user",
-                    "content": user_input
+                    "type": "function",
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments
+                    }
                 }
+
+                for call in assistant_message.tool_calls
+
             ]
 
-            max_iterations = 4
+        messages.append(formatted_assistant)
 
-            for iteration in range(max_iterations):
+        tool_calls = assistant_message.tool_calls
 
-                print(f"\n========== ITERATION {iteration + 1} ==========")
+        if not tool_calls:
 
-                response = ask_gemma(
-                    messages,
-                    tools=ollama_tools
+            print("\n=== HASIL GEMMA ===")
+            print(assistant_message.content)
+
+            print(
+                "Total request time:",
+                round(time.time()-total_start, 2),
+                "detik"
+            )
+
+            return assistant_message.content
+
+        for call in tool_calls:
+
+            tool_name = call.function.name
+            tool_args = call.function.arguments
+
+            if isinstance(tool_args, str):
+
+                try:
+                    tool_args = json.loads(tool_args)
+
+                except json.JSONDecodeError:
+
+                    error = "Arguments tool bukan JSON yang valid."
+
+                    print(error)
+
+                    return error
+
+            print("\n=== MCP TOOL CALL ===")
+            print("Tool :", tool_name)
+
+            print("Arguments:")
+            print(json.dumps(
+                tool_args,
+                indent=2,
+                ensure_ascii=False
+            ))
+
+            try:
+
+                result = await mcp_session.call_tool(
+                    tool_name,
+                    arguments=tool_args
                 )
 
-                assistant_message = response.message
+                result_text = ""
 
-                formatted_assistant = {
-                    "role": "assistant",
-                    "content": assistant_message.content or ""
-                }
+                for content in result.content:
 
-                if assistant_message.tool_calls:
+                    if hasattr(content, "text"):
+                        result_text += content.text
 
-                    formatted_assistant["tool_calls"] = [
+                print("\n=== MCP RESULT ===")
+                print(result_text)
 
-                        {
-                            "type": "function",
-                            "function": {
-                                "name": call.function.name,
-                                "arguments": call.function.arguments
-                            }
-                        }
+            except Exception as e:
 
-                        for call in assistant_message.tool_calls
+                result_text = (
+                    f"Error ketika memanggil tool "
+                    f"{tool_name}: {str(e)}"
+                )
 
-                    ]
+                print(result_text)
 
-                messages.append(formatted_assistant)
+            messages.append({
+                "role": "tool",
+                "name": tool_name,
+                "content": result_text
+            })
 
-                tool_calls = assistant_message.tool_calls
+    return "Gemma mencapai batas maksimum tool calls."
 
-                if not tool_calls:
+async def close_mcp():
 
-                    print("\n=== HASIL GEMMA ===")
-                    print(assistant_message.content)
+    global mcp_session
+    global stdio_context
+    global ollama_tools
 
-                    return assistant_message.content
+    if mcp_session:
 
-                for call in tool_calls:
+        await mcp_session.__aexit__(None, None, None)
 
-                    tool_name = call.function.name
-                    tool_args = call.function.arguments
+        mcp_session = None
 
-                    if isinstance(tool_args, str):
+    if stdio_context:
 
-                        try:
-                            tool_args = json.loads(tool_args)
+        await stdio_context.__aexit__(None, None, None)
 
-                        except json.JSONDecodeError:
+        stdio_context = None
 
-                            error = "Arguments tool bukan JSON yang valid."
-
-                            print(error)
-
-                            return error
-
-                    print("\n=== MCP TOOL CALL ===")
-                    print("Tool :", tool_name)
-
-                    print("Arguments:")
-                    print(json.dumps(
-                        tool_args,
-                        indent=2,
-                        ensure_ascii=False
-                    ))
-
-                    try:
-
-                        result = await session.call_tool(
-                            tool_name,
-                            arguments=tool_args
-                        )
-
-                        result_text = ""
-
-                        for content in result.content:
-
-                            if hasattr(content, "text"):
-                                result_text += content.text
-
-                        print("\n=== MCP RESULT ===")
-                        print(result_text)
-
-                    except Exception as e:
-
-                        result_text = (
-                            f"Error ketika memanggil tool "
-                            f"{tool_name}: {str(e)}"
-                        )
-
-                        print(result_text)
-
-                    messages.append({
-                        "role": "tool",
-                        "name": tool_name,
-                        "content": result_text
-                    })
-
-            return "Gemma mencapai batas maksimum tool calls."
+    ollama_tools = None
 
 if __name__ == "__main__":
 

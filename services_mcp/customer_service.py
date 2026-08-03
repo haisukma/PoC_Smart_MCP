@@ -25,4 +25,18 @@ async def get_customer():
 
         result = response.json()
 
+        # customers = result.get("data", [])
+
+        # #cleaned_customers = [
+        # {
+        #     key: value
+        #     for key, value in customer.items()
+        #     if key not in ["id", "created_at"]
+        # }
+        # for customer in customers
+        # ]
+
+        # return cleaned_customers
+
         return result.get("data", [])
+    

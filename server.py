@@ -1,5 +1,5 @@
 from mcp.server.fastmcp import FastMCP
-# from tools.nsjbt_tool import register_nsjbt_tools
+from tools.nsjbt_tool import register_nsjbt_tools
 from tools.asset_tool import register_asset_tools
 from tools.neutroncabang_tool import register_neutron_tools
 from tools.customer_tool import register_customer_tools

@@ -25,4 +25,15 @@ async def get_sales_performance():
 
         result = response.json()
 
-        return result.get("data", [])
+        data_sales = result.get("data", [])
+
+        cleaned_performance = [
+            {
+                key: value
+                for key, value in performance.items()
+                if key not in ["id", "created_at"]
+            }
+            for performance in data_sales
+        ]
+
+        return cleaned_performance

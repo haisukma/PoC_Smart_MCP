@@ -1,6 +1,5 @@
 from services_mcp.asset_service import get_asset
 
-
 def register_asset_tools(mcp):
 
     @mcp.tool()
