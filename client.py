@@ -106,13 +106,14 @@ def convert_mcp_tools_to_ollama(tools):
 
     return ollama_tools
 
-def ask_gemma(messages, tools=None):
+def ask_gemma(messages, tools=None, stream=False):
 
     start = time.time()
 
     kwargs = {
         "model": "qwen2.5:7b",
-        "messages": messages
+        "messages": messages,
+        "stream": stream
     }
 
     if tools:
@@ -120,11 +121,12 @@ def ask_gemma(messages, tools=None):
 
     response = client.chat(**kwargs)
 
-    print(
-        "Gemma time:",
-        round(time.time()-start,2),
-        "detik"
-    )
+    if not stream:
+        print(
+            "Gemma time:",
+            round(time.time()-start,2),
+            "detik"
+        )
 
     return response
 
@@ -167,101 +169,87 @@ async def chat(
 
         response = ask_gemma(
             messages,
-            tools=ollama_tools
+            tools=ollama_tools,
+            stream=False
         )
 
         assistant_message = response.message
+
+        if not assistant_message.tool_calls:
+
+            print("\nHASIL GEMMA (STREAMING):")
+
+            stream_response = ask_gemma(
+                messages,
+                tools=ollama_tools,
+                stream=True
+            )
+
+            full_content = ""
+            for chunk in stream_response:
+                text_chunk = chunk.message.content or ""
+                full_content += text_chunk
+                print(text_chunk, end="", flush=True)
+            print()
+            print(
+                "\nTotal request time:",
+                round(time.time()-total_start, 2),
+                "detik"
+            )
+
+            return full_content
 
         formatted_assistant = {
             "role": "assistant",
             "content": assistant_message.content or ""
         }
 
-        if assistant_message.tool_calls:
-
-            formatted_assistant["tool_calls"] = [
-
-                {
-                    "type": "function",
-                    "function": {
-                        "name": call.function.name,
-                        "arguments": call.function.arguments
-                    }
+        formatted_assistant["tool_calls"] = [
+            {
+                "type": "function",
+                "function": {
+                    "name": call.function.name,
+                    "arguments": call.function.arguments
                 }
-
-                for call in assistant_message.tool_calls
-
-            ]
+            }
+            for call in assistant_message.tool_calls
+        ]
 
         messages.append(formatted_assistant)
-
         tool_calls = assistant_message.tool_calls
 
-        if not tool_calls:
-
-            print("\nHASIL GEMMA")
-            print(assistant_message.content)
-
-            print(
-                "Total request time:",
-                round(time.time()-total_start, 2),
-                "detik"
-            )
-
-            return assistant_message.content
-
         for call in tool_calls:
-
             tool_name = call.function.name
             tool_args = call.function.arguments
 
             if isinstance(tool_args, str):
-
                 try:
                     tool_args = json.loads(tool_args)
-
                 except json.JSONDecodeError:
-
                     error = "Arguments tool bukan JSON yang valid."
-
                     print(error)
-
                     return error
 
             print("\nMCP TOOL CALL")
             print("Tool :", tool_name)
-
-            print("Arguments:")
-            print(json.dumps(
-                tool_args,
-                indent=2,
-                ensure_ascii=False
-            ))
+            print("Arguments:", json.dumps(tool_args, indent=2, ensure_ascii=False))
 
             try:
-
                 result = await mcp_session.call_tool(
                     tool_name,
                     arguments=tool_args
                 )
 
                 result_text = ""
-
                 for content in result.content:
-
                     if hasattr(content, "text"):
                         result_text += content.text
 
-                print("\n=== MCP RESULT ===")
+                print("\nMCP RESULT")
                 print(result_text)
 
             except Exception as e:
-
-                result_text = (
-                    f"Error ketika memanggil tool "
-                    f"{tool_name}: {str(e)}"
-                )
-
+                result_text = f"Error ketika memanggil tool {tool_name}: {str(e)}"
                 print(result_text)
 
             messages.append({
@@ -293,8 +281,7 @@ async def close_mcp():
 if __name__ == "__main__":
 
     user_input = input("\nApa yang ingin kamu cari?\n> ")
+    
     result = asyncio.run(
         chat(user_input)
     )
-
-    print(result)

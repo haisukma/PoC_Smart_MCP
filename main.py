@@ -38,3 +38,9 @@ async def chatbot(
         "success": True,
         "answer": answer
     }
+
+# @app.post("/stream_chat")
+# async def stream_chat(
+#     message: str = Form(...),
+#     File: UploadFile | None = File(None)
+# )

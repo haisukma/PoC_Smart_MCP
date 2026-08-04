@@ -6,7 +6,6 @@ load_dotenv()
 
 API_BASE_URL = os.getenv("API_BASE_URL")
 
-
 async def get_customer():
     """
     Mengambil data customer dari API.
@@ -25,18 +24,18 @@ async def get_customer():
 
         result = response.json()
 
-        # customers = result.get("data", [])
+        customers = result.get("data", [])
 
-        # #cleaned_customers = [
-        # {
-        #     key: value
-        #     for key, value in customer.items()
-        #     if key not in ["id", "created_at"]
-        # }
-        # for customer in customers
-        # ]
+        cleaned_customers = [
+        {
+            key: value
+            for key, value in customer.items()
+            if key not in ["id", "created_at"]
+        }
+        for customer in customers
+        ]
 
-        # return cleaned_customers
+        return cleaned_customers
 
-        return result.get("data", [])
+        # return result.get("data", [])
     
