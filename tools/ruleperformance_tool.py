@@ -15,5 +15,5 @@ def register_rule_performance_tools(mcp):
         """
 
         return Path(
-            "knowledge_base/sales-performance.md"
+            "knowledge_base/salesperformance-info.md"
         ).read_text(encoding="utf-8")

@@ -1,28 +1,18 @@
 import asyncio
 import json
-import os
+from pathlib import Path
+import sys
 import time
-# from dotenv import load_dotenv
-from ollama import Client
-from mcp import (
-    ClientSession,
-    StdioServerParameters
-)
+from ollama import AsyncClient
+from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
-
-# load_dotenv()
 
 mcp_session = None
 stdio_context = None
 ollama_tools = None
 
 init_lock = asyncio.Lock()
-
-# OLLAMA_HOST = os.getenv("OLLAMA_HOST")
-# MODEL_NAME = "gemma4:12b"
-
-# client = Client(host=OLLAMA_HOST)
-client = Client()
+client = AsyncClient()
 
 server_params = StdioServerParameters(
     command="python",
@@ -30,66 +20,73 @@ server_params = StdioServerParameters(
 )
 
 SYSTEM_PROMPT = """
-Kamu adalah AI assistant yang menggunakan MCP tools.
+Kamu adalah Data Analyst Agent yang terintegrasi dengan MCP Tools dan lingkungan eksekusi Python. Kamu sangat efisien, presisi, dan to the point.
 
-Aturan:
+[PRINSIP UTAMA]
+1. Untuk semua pertanyaan yang membutuhkan data/informasi, kamu WAJIB memanggil MCP Tool atau fungsi analisis terkait terlebih dahulu sebelum memberikan jawaban akhir. Jangan mengarang data.
+2. Gunakan hasil eksekusi tool sebagai satu-satunya sumber informasi resmi (Source of Truth).
+3. Selalu jawab menggunakan Bahasa Indonesia.
 
-- Gunakan tool yang paling sesuai berdasarkan nama,
-  deskripsi, dan parameter yang tersedia.
-- Jangan mengarang data.
-- Gunakan hasil MCP sebagai sumber informasi utama.
-- Jika tool menghasilkan data, gunakan data tersebut
-  untuk menjawab pertanyaan user.
-- Jangan mengatakan data kosong jika tool sebenarnya
-  mengembalikan data.
-- Jangan memanggil tool yang tidak relevan.
-- Jika user meminta analisis, evaluasi, penilaian, atau perhitungan performance sales: Ambil terlebih dahulu data performance yang relevan menggunakan tool data, Setelah data diperoleh panggil tool get_sales_performance_knowledge, Gunakan data dan aturan tersebut untuk menyusun jawaban.
-- Jangan memanggil knowledge jika user hanya meminta data mentah.
-- Jawab dalam bahasa Indonesia.
+[GAYA BAHASA & OUTPUT FORMAT]
+1. DILARANG BASA-BASI: Langsung berikan jawaban, angka, atau ringkasan insight utama tanpa kalimat pembuka yang tidak perlu.
+2. DILARANG NARASI PROSES: Jangan menuliskan narasi berpikir seperti "Mari kita lihat...", "Saya akan menjalankan kode...", atau menceritakan error internal.
+3. SAAT MEMANGGIL TOOL: Dilarang menghasilkan teks atau narasi basa-basi sama sekali.
 
-Berikan jawaban yang langsung, jelas, dan sesuai
-dengan data yang diperoleh dari MCP.
+[ATURAN EKSEKUSI PYTHON (execute_python_analysis)]
+1. Variabel `df` (Pandas DataFrame) HANYA tersedia di dalam lingkungan runtime `execute_python_analysis` dan SUDAH DILOAD secara otomatis oleh sistem.
+2. DILARANG menulis `df = pd.read_csv(...)` atau `pd.read_excel(...)` di dalam kode Python kamu.
+3. Langsung gunakan variabel `df` untuk pemrosesan data.
+4. WAJIB menggunakan `print(...)` untuk menampilkan hasil analisis agar bisa dibaca kembali sebelum menyusun respons akhir.
+
+[PROSEDUR EKSEKUSI TOOL (TOOL CALLING WORKFLOW)]
+
+1. KHUSUS DATA & KONDISI ASET:
+   - Langkah 1: WAJIB memanggil `get_asset_tool` terlebih dahulu.
+   - Langkah 2: Sajikan jawaban atau perhitungan jumlah secara langsung berdasarkan hasil output data dari tool tersebut.
+
+2. KHUSUS ANALISIS PERFORMANCE SALES:
+   - Langkah 1: Ambil data sales via `get_sales_performance_tool`.
+   - Langkah 2: Panggil `get_sales_performance_knowledge` untuk membaca aturan penilaian.
+   - Langkah 3: Gabungkan data dan aturan tersebut untuk menyusun analisis akhir.
+
+3. KHUSUS ANALISIS DATA FILE (CSV / EXCEL):
+   - Langkah 1: Panggil `get_dataset_schema` untuk melihat struktur data.
+   - Langkah 2: Buat dan jalankan kode Pandas via `execute_python_analysis`.
+   - Langkah 3: Sajikan jawaban/insight berdasarkan output analisis.
+
+4. KHUSUS KESIMPULAN / SUMMARY DATA FILE:
+   - Langkah 1: Panggil `get_dataset_schema` HANYA untuk mengecek nama kolom yang tersedia.
+   - Langkah 2: WAJIB panggil `execute_python_analysis` untuk mengeksekusi frekuensi kolom: `print(df['NAMA_KOLOM'].value_counts())` (berlaku untuk semua kolom relevan selain 'NO').
+   - Langkah 3: Rangkum HASIL PRINT menjadi 3-5 poin insight mendalam. DILARANG memberikan kesimpulan sebelum memanggil `execute_python_analysis`.
+
+5. KHUSUS DOKUMEN (PDF / WORD / TXT):
+   - Panggil `get_dataset_schema` untuk mendapatkan ringkasan isi dokumen, lalu langsung sajikan poin utamanya.
 """
 
 async def initialize_mcp():
-
-    global mcp_session
-    global stdio_context
-    global ollama_tools
+    global mcp_session, stdio_context, ollama_tools
 
     if mcp_session is not None:
         return
 
     async with init_lock:
-
         if mcp_session is not None:
             return
 
         stdio_context = stdio_client(server_params)
-
         read, write = await stdio_context.__aenter__()
-
         mcp_session = ClientSession(read, write)
-
         await mcp_session.__aenter__()
-
         await mcp_session.initialize()
 
         tools_result = await mcp_session.list_tools()
-
-        ollama_tools = convert_mcp_tools_to_ollama(
-            tools_result.tools
-        )
-
+        ollama_tools = convert_mcp_tools_to_ollama(tools_result.tools)
         print("MCP initialized")
 
 def convert_mcp_tools_to_ollama(tools):
     ollama_tools = []
-
     for tool in tools:
-
         schema = tool.inputSchema
-
         if hasattr(schema, "model_dump"):
             schema = schema.model_dump()
         elif not isinstance(schema, dict):
@@ -103,185 +100,123 @@ def convert_mcp_tools_to_ollama(tools):
                 "parameters": schema
             }
         })
-
     return ollama_tools
 
-def ask_gemma(messages, tools=None, stream=False):
-
-    start = time.time()
-
-    kwargs = {
-        "model": "qwen2.5:7b",
-        "messages": messages,
-        "stream": stream
-    }
-
-    if tools:
-        kwargs["tools"] = tools
-
-    response = client.chat(**kwargs)
-
-    if not stream:
-        print(
-            "Gemma time:",
-            round(time.time()-start,2),
-            "detik"
-        )
-
-    return response
-
-async def chat(
-        user_input: str,
-        context: str = ""
-    ):
-
+async def chat(user_input: str, filename: str | None = None, doc_chunks: list[str] | None = None):
     total_start = time.time()
-
     await initialize_mcp()
 
-    messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT
-        }
-    ]
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
 
-    if context:
-        messages.append({
-            "role": "system",
-            "content": f"""
-    Berikut adalah isi dokumen yang diunggah user.
+    has_file = bool(filename and isinstance(filename, str) and filename.strip())
+    
+    active_tools = []
+    if ollama_tools:
+        if has_file:
+            active_tools = ollama_tools
+            messages.append({
+                "role": "system",
+                "content": (
+                    f"[INFO SISTEM]: Pengguna mengunggah file data '{filename}'.\n"
+                    f"1. Kamu WAJIB memanggil `get_dataset_schema(filename='{filename}')` terlebih dahulu.\n"
+                    f"2. Setelah skema didapat, kamu WAJIB memanggil `execute_python_analysis`."
+                )
+            })
+        else:
+            file_tools = {"get_dataset_schema", "execute_python_analysis"}
+            active_tools = [t for t in ollama_tools if t["function"]["name"] not in file_tools]
 
-    {context}
-    """
-        })
-
-    messages.append({
-        "role": "user",
-        "content": user_input
-    })
+    messages.append({"role": "user", "content": user_input})
 
     max_iterations = 4
 
     for iteration in range(max_iterations):
-
         print(f"\nITERATION {iteration + 1}")
 
-        response = ask_gemma(
-            messages,
-            tools=ollama_tools,
-            stream=False
+        response_stream = await client.chat(
+            model="qwen2.5:7b",
+            messages=messages,
+            tools=active_tools if active_tools else None,
+            stream=True
         )
 
-        assistant_message = response.message
+        full_text = ""
+        tool_calls = []
 
-        if not assistant_message.tool_calls:
+        async for chunk in response_stream:
+            if chunk.message.tool_calls:
+                tool_calls.extend(chunk.message.tool_calls)
 
-            print("\nHASIL GEMMA (STREAMING):")
+            if chunk.message.content:
+                text = chunk.message.content
+                full_text += text
+                yield text
 
-            stream_response = ask_gemma(
-                messages,
-                tools=ollama_tools,
-                stream=True
-            )
-
-            full_content = ""
-            for chunk in stream_response:
-                text_chunk = chunk.message.content or ""
-                full_content += text_chunk
-                print(text_chunk, end="", flush=True)
-            print()
-            print(
-                "\nTotal request time:",
-                round(time.time()-total_start, 2),
-                "detik"
-            )
-
-            return full_content
-
-        formatted_assistant = {
-            "role": "assistant",
-            "content": assistant_message.content or ""
-        }
-
-        formatted_assistant["tool_calls"] = [
-            {
-                "type": "function",
-                "function": {
-                    "name": call.function.name,
-                    "arguments": call.function.arguments
+        if tool_calls:
+            formatted_tool_calls = [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": call.function.name,
+                        "arguments": call.function.arguments
+                    }
                 }
-            }
-            for call in assistant_message.tool_calls
-        ]
-
-        messages.append(formatted_assistant)
-        tool_calls = assistant_message.tool_calls
-
-        for call in tool_calls:
-            tool_name = call.function.name
-            tool_args = call.function.arguments
-
-            if isinstance(tool_args, str):
-                try:
-                    tool_args = json.loads(tool_args)
-                except json.JSONDecodeError:
-                    error = "Arguments tool bukan JSON yang valid."
-                    print(error)
-                    return error
-
-            print("\nMCP TOOL CALL")
-            print("Tool :", tool_name)
-            print("Arguments:", json.dumps(tool_args, indent=2, ensure_ascii=False))
-
-            try:
-                result = await mcp_session.call_tool(
-                    tool_name,
-                    arguments=tool_args
-                )
-
-                result_text = ""
-                for content in result.content:
-                    if hasattr(content, "text"):
-                        result_text += content.text
-
-                print("\nMCP RESULT")
-                print(result_text)
-
-            except Exception as e:
-                result_text = f"Error ketika memanggil tool {tool_name}: {str(e)}"
-                print(result_text)
+                for call in tool_calls
+            ]
 
             messages.append({
-                "role": "tool",
-                "name": tool_name,
-                "content": result_text
+                "role": "assistant",
+                "content": full_text,
+                "tool_calls": formatted_tool_calls
             })
 
-    return "Gemma mencapai batas maksimum tool calls."
+            for call in tool_calls:
+                tool_name = call.function.name
+                tool_args = call.function.arguments
+
+                if isinstance(tool_args, str):
+                    try:
+                        tool_args = json.loads(tool_args)
+                    except json.JSONDecodeError:
+                        yield "\n[Error: Arguments tool bukan JSON yang valid.]"
+                        return
+
+                print("\nMCP TOOL CALL")
+                print("Tool:", tool_name)
+                print("Arguments:", json.dumps(tool_args, indent=2, ensure_ascii=False))
+
+                try:
+                    result = await mcp_session.call_tool(tool_name, arguments=tool_args)
+                    result_text = "".join([c.text for c in result.content if hasattr(c, "text")])
+                except Exception as e:
+                    result_text = f"Error ketika memanggil tool {tool_name}: {str(e)}"
+
+                messages.append({
+                    "role": "tool",
+                    "content": result_text
+                })
+
+        else:
+            print(f"\n[Selesai dalam {round(time.time() - total_start, 2)} detik]")
+            return
+
+    yield "\n[Batas maksimum tool calls tercapai.]"
 
 async def close_mcp():
-
-    global mcp_session
-    global stdio_context
-    global ollama_tools
+    global mcp_session, stdio_context, ollama_tools
 
     if mcp_session:
-
-        await mcp_session.__aexit__(None, None, None)
+        try:
+            await mcp_session.__aexit__(None, None, None)
+        except Exception as e:
+            print(f"Error closing MCP session: {e}")
         mcp_session = None
 
     if stdio_context:
-
-        await stdio_context.__aexit__(None, None, None)
+        try:
+            await stdio_context.__aexit__(None, None, None)
+        except Exception as e:
+            print(f"Error closing Stdio context: {e}")
         stdio_context = None
 
     ollama_tools = None
-
-if __name__ == "__main__":
-
-    user_input = input("\nApa yang ingin kamu cari?\n> ")
-    
-    result = asyncio.run(
-        chat(user_input)
-    )

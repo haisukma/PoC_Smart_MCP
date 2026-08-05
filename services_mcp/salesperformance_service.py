@@ -6,7 +6,6 @@ load_dotenv()
 
 API_BASE_URL = os.getenv("API_BASE_URL")
 
-
 async def get_sales_performance():
     """
     Mengambil data sales performance dari API.

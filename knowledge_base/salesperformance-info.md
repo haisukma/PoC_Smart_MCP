@@ -21,14 +21,4 @@ Status: Hampir mencapai target
 
 Performance Percentage < 90%
 Status: Belum mencapai target
-<!-- 
-## Achievement Gap
-Hitung selisih:
 
-total_achievement - total_target
-
-Jika hasil positif:
-Sales melebihi target.
-
-Jika hasil negatif:
-Sales belum mencapai target. -->
