@@ -20,47 +20,25 @@ server_params = StdioServerParameters(
 )
 
 SYSTEM_PROMPT = """
-Kamu adalah Data Analyst Agent yang terintegrasi dengan MCP Tools dan lingkungan eksekusi Python. Kamu sangat efisien, presisi, dan to the point.
+Kamu adalah Analyst Agent yang efisien dan to the point. Jawab dalam BAHASA INDONESIA.
 
-[PRINSIP UTAMA]
-1. Untuk semua pertanyaan yang membutuhkan data/informasi, kamu WAJIB memanggil MCP Tool atau fungsi analisis terkait terlebih dahulu sebelum memberikan jawaban akhir. Jangan mengarang data.
-2. Gunakan hasil eksekusi tool sebagai satu-satunya sumber informasi resmi (Source of Truth).
-3. Selalu jawab menggunakan Bahasa Indonesia.
+[ATURAN UTAMA]
+1. DILARANG mengarang data, basa-basi, atau menuliskan narasi proses (misal: "Mari kita lihat...").
+2. Selalu panggil Tool sebelum menjawab. Hasil tool adalah Source of Truth.
+3. Variabel `df` di `execute_python_analysis` SUDAH DILOAD otomatis. DILARANG panggil `pd.read_csv/excel()`. Selalu gunakan `print(...)` untuk output.
 
-[GAYA BAHASA & OUTPUT FORMAT]
-1. DILARANG BASA-BASI: Langsung berikan jawaban, angka, atau ringkasan insight utama tanpa kalimat pembuka yang tidak perlu.
-2. DILARANG NARASI PROSES: Jangan menuliskan narasi berpikir seperti "Mari kita lihat...", "Saya akan menjalankan kode...", atau menceritakan error internal.
-3. SAAT MEMANGGIL TOOL: Dilarang menghasilkan teks atau narasi basa-basi sama sekali.
-
-[ATURAN EKSEKUSI PYTHON (execute_python_analysis)]
-1. Variabel `df` (Pandas DataFrame) HANYA tersedia di dalam lingkungan runtime `execute_python_analysis` dan SUDAH DILOAD secara otomatis oleh sistem.
-2. DILARANG menulis `df = pd.read_csv(...)` atau `pd.read_excel(...)` di dalam kode Python kamu.
-3. Langsung gunakan variabel `df` untuk pemrosesan data.
-4. WAJIB menggunakan `print(...)` untuk menampilkan hasil analisis agar bisa dibaca kembali sebelum menyusun respons akhir.
-
-[PROSEDUR EKSEKUSI TOOL (TOOL CALLING WORKFLOW)]
-
-1. KHUSUS DATA & KONDISI ASET:
-   - Langkah 1: WAJIB memanggil `get_asset_tool` terlebih dahulu.
-   - Langkah 2: Sajikan jawaban atau perhitungan jumlah secara langsung berdasarkan hasil output data dari tool tersebut.
-
-2. KHUSUS ANALISIS PERFORMANCE SALES:
-   - Langkah 1: Ambil data sales via `get_sales_performance_tool`.
-   - Langkah 2: Panggil `get_sales_performance_knowledge` untuk membaca aturan penilaian.
-   - Langkah 3: Gabungkan data dan aturan tersebut untuk menyusun analisis akhir.
-
-3. KHUSUS ANALISIS DATA FILE (CSV / EXCEL):
-   - Langkah 1: Panggil `get_dataset_schema` untuk melihat struktur data.
-   - Langkah 2: Buat dan jalankan kode Pandas via `execute_python_analysis`.
-   - Langkah 3: Sajikan jawaban/insight berdasarkan output analisis.
-
-4. KHUSUS KESIMPULAN / SUMMARY DATA FILE:
-   - Langkah 1: Panggil `get_dataset_schema` HANYA untuk mengecek nama kolom yang tersedia.
-   - Langkah 2: WAJIB panggil `execute_python_analysis` untuk mengeksekusi frekuensi kolom: `print(df['NAMA_KOLOM'].value_counts())` (berlaku untuk semua kolom relevan selain 'NO').
-   - Langkah 3: Rangkum HASIL PRINT menjadi 3-5 poin insight mendalam. DILARANG memberikan kesimpulan sebelum memanggil `execute_python_analysis`.
-
-5. KHUSUS DOKUMEN (PDF / WORD / TXT):
-   - Panggil `get_dataset_schema` untuk mendapatkan ringkasan isi dokumen, lalu langsung sajikan poin utamanya.
+[ALUR PANGGIL TOOL]
+- ASET: Panggil `get_asset_tool` -> Jawab
+- CUSTOMER: Panggil `get_customer_tool` -> Jawab
+- SALES PERFORMANCE: Panggil `get_sales_performance_tool -> Jawab
+- DOKUMEN TEKS (PDF/WORD/TXT): Panggil `get_dataset_schema` -> Jawab poin utama. DILARANG panggil `execute_python_analysis`.
+- TABEL DATA (CSV/EXCEL):
+  1. Panggil `get_dataset_schema`. Jangan hanya membaca schema! Kamu wajib mengeksekusi Python untuk analisis data real
+  2. PERTANYAAN DETAIL: Panggil `execute_python_analysis` dengan filter spesifik (misal: `print(df[df['STATUS']=='NORMAL'])`).
+  3. PERTANYAAN KESIMPULAN/ANALISIS MENDALAM: 
+     Lalu panggil `execute_python_analysis` dengan kode loop distribusi kolom:
+     `for col in df.columns: print(f"=== {col} ==="); print(df[col].value_counts().head(5)); print()`
+     LALU rangkum temuan distribusi tersebut menjadi insight mendalam! DILARANG menyimpulkan tanpa eksekusi Python!
 """
 
 async def initialize_mcp():
@@ -101,7 +79,6 @@ def convert_mcp_tools_to_ollama(tools):
             }
         })
     return ollama_tools
-
 async def chat(user_input: str, filename: str | None = None, doc_chunks: list[str] | None = None):
     total_start = time.time()
     await initialize_mcp()
@@ -141,36 +118,38 @@ async def chat(user_input: str, filename: str | None = None, doc_chunks: list[st
         )
 
         full_text = ""
-        tool_calls = []
+        raw_tool_calls = []
 
         async for chunk in response_stream:
+            # Catch tool calls jika ada
             if chunk.message.tool_calls:
-                tool_calls.extend(chunk.message.tool_calls)
+                raw_tool_calls.extend(chunk.message.tool_calls)
 
             if chunk.message.content:
                 text = chunk.message.content
                 full_text += text
                 yield text
 
-        if tool_calls:
-            formatted_tool_calls = [
-                {
-                    "type": "function",
-                    "function": {
-                        "name": call.function.name,
-                        "arguments": call.function.arguments
-                    }
-                }
-                for call in tool_calls
-            ]
+        # Deduplikasi Tool Calls berdasarkan Nama Fungsi & Argumen
+        unique_tool_calls = []
+        seen_calls = set()
+        for call in raw_tool_calls:
+            # Konversi arguments ke string agar bisa dijadikan key hash
+            args_str = json.dumps(call.function.arguments, sort_keys=True) if isinstance(call.function.arguments, dict) else str(call.function.arguments)
+            call_key = (call.function.name, args_str)
+            if call_key not in seen_calls:
+                seen_calls.add(call_key)
+                unique_tool_calls.append(call)
 
+        if unique_tool_calls:
+            # Simpan pesan assistant dengan objek tool_calls asli
             messages.append({
                 "role": "assistant",
                 "content": full_text,
-                "tool_calls": formatted_tool_calls
+                "tool_calls": unique_tool_calls
             })
 
-            for call in tool_calls:
+            for call in unique_tool_calls:
                 tool_name = call.function.name
                 tool_args = call.function.arguments
 
@@ -191,9 +170,16 @@ async def chat(user_input: str, filename: str | None = None, doc_chunks: list[st
                 except Exception as e:
                     result_text = f"Error ketika memanggil tool {tool_name}: {str(e)}"
 
+                # Berikan Guardrail Pengingat Langsung pada Pesan Tool
+                tool_response = (
+                    f"Hasil eksekusi {tool_name}:\n{result_text}\n\n"
+                    f"[INSTRUKSI WAJIB]: Data di atas sudah lengkap. DILARANG memanggil tool yang sama lagi! "
+                    f"Jawab dan analisis data tersebut HANYA dalam Bahasa Indonesia!"
+                )
+
                 messages.append({
                     "role": "tool",
-                    "content": result_text
+                    "content": tool_response
                 })
 
         else:
@@ -201,7 +187,7 @@ async def chat(user_input: str, filename: str | None = None, doc_chunks: list[st
             return
 
     yield "\n[Batas maksimum tool calls tercapai.]"
-
+    
 async def close_mcp():
     global mcp_session, stdio_context, ollama_tools
 

@@ -5,15 +5,11 @@ def register_rule_performance_tools(mcp):
     @mcp.tool()
     async def get_sales_performance_knowledge():
         """
-        Mengambil aturan analisis performance sales.
-
-        Gunakan tool ini ketika user meminta:
-        - analisis performance
-        - evaluasi sales
-        - ranking sales
-        - achievement sales
+        Mengambil aturan & standar rumus analisis performance sales.
+        Gunakan tool ini WAJIB saat melakukan evaluasi, ranking, atau persentase achievement sales.
         """
-
-        return Path(
-            "knowledge_base/salesperformance-info.md"
-        ).read_text(encoding="utf-8")
+        knowledge_path = Path("knowledge_base/salesperformance-info.md")
+        if not knowledge_path.exists():
+            return "Aturan knowledge base tidak ditemukan."
+            
+        return knowledge_path.read_text(encoding="utf-8")

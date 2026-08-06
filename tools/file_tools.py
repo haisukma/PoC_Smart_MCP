@@ -13,6 +13,10 @@ def register_file_tools(mcp):
         """
         Mengambil skema file (kolom & sampel data untuk CSV/Excel) atau isi teks dokumen (untuk PDF).
         Gunakan tool ini PERTAMA KALI saat pengguna mengunggah file.
+
+        PERINGATAN STRICT:
+        - DILARANG dipanggil untuk data API (Sales Performance, Asset, Customer).
+        - HANYA dipanggil jika ada argumen `filename` file yang diunggah.
         """
         filepath = DATA_DIR / filename
         if not filepath.exists():
