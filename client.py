@@ -130,11 +130,9 @@ async def chat(user_input: str, filename: str | None = None, doc_chunks: list[st
                 full_text += text
                 yield text
 
-        # Deduplikasi Tool Calls berdasarkan Nama Fungsi & Argumen
         unique_tool_calls = []
         seen_calls = set()
         for call in raw_tool_calls:
-            # Konversi arguments ke string agar bisa dijadikan key hash
             args_str = json.dumps(call.function.arguments, sort_keys=True) if isinstance(call.function.arguments, dict) else str(call.function.arguments)
             call_key = (call.function.name, args_str)
             if call_key not in seen_calls:
@@ -142,7 +140,6 @@ async def chat(user_input: str, filename: str | None = None, doc_chunks: list[st
                 unique_tool_calls.append(call)
 
         if unique_tool_calls:
-            # Simpan pesan assistant dengan objek tool_calls asli
             messages.append({
                 "role": "assistant",
                 "content": full_text,
@@ -170,7 +167,6 @@ async def chat(user_input: str, filename: str | None = None, doc_chunks: list[st
                 except Exception as e:
                     result_text = f"Error ketika memanggil tool {tool_name}: {str(e)}"
 
-                # Berikan Guardrail Pengingat Langsung pada Pesan Tool
                 tool_response = (
                     f"Hasil eksekusi {tool_name}:\n{result_text}\n\n"
                     f"[INSTRUKSI WAJIB]: Data di atas sudah lengkap. DILARANG memanggil tool yang sama lagi! "

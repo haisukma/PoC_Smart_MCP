@@ -1,4 +1,3 @@
-# manual
 import shutil
 from pathlib import Path
 from contextlib import asynccontextmanager
