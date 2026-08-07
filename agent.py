@@ -35,7 +35,13 @@ Kamu adalah Analyst Agent yang efisien dan to the point. Jawab dalam BAHASA INDO
 
 - FILE UNGGAHAN LOKAL (FILE UPLOAD):
   * Dokumen Teks (PDF/WORD/TXT): Panggil `get_dataset_schema` -> Langsung jawab. DILARANG panggil Python!
-  * Tabel Data (CSV/EXCEL): Panggil `get_dataset_schema` -> Panggil `execute_python_analysis`.
+  * Tabel Data (CSV/EXCEL):
+    1. Panggil `get_dataset_schema`. Jangan hanya membaca schema! Kamu wajib mengeksekusi Python untuk analisis data real
+    2. PERTANYAAN DETAIL: Panggil `execute_python_analysis` dengan filter spesifik (misal: `print(df[df['STATUS']=='NORMAL'])`).
+    3. PERTANYAAN KESIMPULAN: 
+       Lalu panggil `execute_python_analysis` dengan kode loop distribusi kolom:
+       `for col in df.columns: print(f"=== {col} ==="); print(df[col].value_counts().head(5)); print()`
+       LALU rangkum temuan tersebut menjadi insight mendalam! DILARANG menyimpulkan tanpa eksekusi Python!
 """
 
 async def init_agent():
