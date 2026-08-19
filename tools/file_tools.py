@@ -11,8 +11,8 @@ def register_file_tools(mcp):
     @mcp.tool()
     async def get_dataset_schema(filename: str) -> str:
         """
-        Mengambil skema file (kolom & sampel data untuk CSV/Excel) atau isi teks dokumen (untuk PDF).
-        Gunakan tool ini PERTAMA KALI saat pengguna mengunggah file.
+        Mengambil skema file (kolom & sampel data untuk CSV/Excel).
+        Gunakan tool ini PERTAMA KALI saat pengguna mengunggah file CSV/Excel.
 
         PERINGATAN STRICT:
         - DILARANG dipanggil untuk data API (Sales Performance, Asset, Customer).
