@@ -8,7 +8,7 @@ def register_database_tools(mcp):
     @mcp.tool()
     def get_database_schema_tool():
         """
-        Mendapatkan struktur database company_db.
+        Mendapatkan struktur database smart_mcp_db, kecuali table inventory_products.
 
         Gunakan tool ini terlebih dahulu untuk mengetahui:
         - tabel yang tersedia
@@ -26,7 +26,7 @@ def register_database_tools(mcp):
     def execute_read_query_tool(query: str):
         """
         Menjalankan query SQL SELECT secara read-only
-        pada database company_db.
+        pada database smart_mcp_db.
 
         Gunakan hanya untuk membaca data.
         Query INSERT, UPDATE, DELETE, DROP, ALTER,

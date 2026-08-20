@@ -72,6 +72,11 @@ async def init_agent():
         base_url="https://openrouter.ai/api/v1",
     )
 
+    # llm = ChatOllama(
+    #     model="qwen2.5:7b",
+    #     temperature=0
+    # )
+
     checkpointer = InMemorySaver()
 
     agent_executor = create_react_agent(

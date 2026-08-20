@@ -1,9 +1,9 @@
 import os
 import mysql.connector
+import re
 from dotenv import load_dotenv
 
 load_dotenv()
-
 
 def get_connection():
     """
@@ -18,10 +18,11 @@ def get_connection():
         database=os.getenv("DB_NAME"),
     )
 
+BLOCKED_TABLES = ["inventory_products"]
 
 def get_database_schema():
     """
-    Mengambil informasi tabel dan kolom dari database.
+    Mengambil informasi tabel dan kolom dari database, kecuali tabel inventory_products.
     """
 
     conn = get_connection()
@@ -62,8 +63,25 @@ def get_database_schema():
             "key": row["COLUMN_KEY"]
         })
 
-    return schema
+    # schema = {}
+    # for row in rows:
+    #     table_name = row["TABLE_NAME"]
 
+    #     if table_name.lower() in [t.lower() for t in BLOCKED_TABLES]:
+    #         continue
+
+    #     if table_name not in schema:
+    #         schema[table_name] = []
+
+    #     schema[table_name].append(
+    #         {
+    #             "column": row["COLUMN_NAME"],
+    #             "type": row["DATA_TYPE"],
+    #             "key": row["COLUMN_KEY"],
+    #         }
+    #     )
+
+    return schema
 
 def execute_read_query(query: str):
     """
@@ -77,6 +95,13 @@ def execute_read_query(query: str):
         raise ValueError(
             "Query ditolak. Hanya query SELECT yang diperbolehkan."
         )
+
+    # for blocked_table in BLOCKED_TABLES:
+    #     pattern = r"\b" + re.escape(blocked_table) + r"\b"
+    #     if re.search(pattern, query_clean, re.IGNORECASE):
+    #         raise ValueError(
+    #             f"Akses ditolak! Tabel '{blocked_table}' bersifat rahasia dan tidak boleh diakses."
+    #         )
 
     conn = get_connection()
     cursor = conn.cursor(dictionary=True)
