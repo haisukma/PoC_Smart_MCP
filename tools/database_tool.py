@@ -8,7 +8,7 @@ def register_database_tools(mcp):
     @mcp.tool()
     def get_database_schema_tool():
         """
-        Mendapatkan struktur database smart_mcp_db, kecuali table inventory_products.
+        Mendapatkan struktur database smart_mcp_db yang berisi data employee, inventory products, dan support ticket.
 
         Gunakan tool ini terlebih dahulu untuk mengetahui:
         - tabel yang tersedia

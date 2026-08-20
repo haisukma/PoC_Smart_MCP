@@ -1,22 +1,3 @@
-# from services_mcp.salesperformance_service import get_sales_performance
-# from services_mcp.knowledge_service import get_sales_knowledge
-
-# def register_sales_performance_tools(mcp):
-
-#     @mcp.tool()
-#     async def get_sales_performance_tool():
-#         """
-#         Mengambil data sales performance.
-
-#         Returns:
-#             List data sales performance.
-#         """
-
-#         sales_data = await get_sales_performance()
-#         # sales_knowledge = get_sales_knowledge
-
-#         return sales_data
-    
 import io
 import contextlib
 import pandas as pd
@@ -42,18 +23,19 @@ def register_sales_performance_tools(mcp):
             code: Kode Python yang akan dieksekusi. WAJIB menggunakan print(...) untuk melihat output!
                   Contoh: print(df[df['region'].str.lower() == 'bandung'])
         """
+
         try:
             df = await _get_cached_sales_df()
             if df.empty:
                 return "Data sales performance dari API kosong."
 
-            local_vars = {"df": df, "pd": pd}
-            output_buffer = io.StringIO()
+            local_vars_sales = {"df": df, "pd": pd}
+            output_buffer_sales = io.StringIO()
 
-            with contextlib.redirect_stdout(output_buffer):
-                exec(code, {}, local_vars)
+            with contextlib.redirect_stdout(output_buffer_sales):
+                exec(code, {}, local_vars_sales)
 
-            result = output_buffer.getvalue()
+            result = output_buffer_sales.getvalue()
             return result if result.strip() else "Kode berhasil dieksekusi tanpa output print."
 
         except Exception as e:

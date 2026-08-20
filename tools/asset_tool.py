@@ -28,13 +28,13 @@ def register_asset_tools(mcp):
             if df.empty:
                 return "Data asset dari API kosong."
 
-            local_vars = {"df": df, "pd": pd}
-            output_buffer = io.StringIO()
+            local_vars_asset = {"df": df, "pd": pd}
+            output_buffer_asset = io.StringIO()
 
-            with contextlib.redirect_stdout(output_buffer):
-                exec(code, {}, local_vars)
+            with contextlib.redirect_stdout(output_buffer_asset):
+                exec(code, {}, local_vars_asset)
 
-            result = output_buffer.getvalue()
+            result = output_buffer_asset.getvalue()
             return result if result.strip() else "Kode berhasil dieksekusi tanpa output print."
 
         except Exception as e:

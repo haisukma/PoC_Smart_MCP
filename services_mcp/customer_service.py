@@ -1,41 +1,31 @@
 import os
 import httpx
+import pandas as pd
 from dotenv import load_dotenv
 
 load_dotenv()
 
 API_BASE_URL = os.getenv("API_BASE_URL")
 
-async def get_customer():
+async def get_customer_df() -> pd.DataFrame:
     """
-    Mengambil data customer dari API.
+    Mengambil data customer dari API dan mengembalikannya sebagai Pandas DataFrame.
     """
-
     url = f"{API_BASE_URL}/customer"
 
     async with httpx.AsyncClient() as client:
-
-        response = await client.get(
-            url,
-            timeout=30
-        )
-
+        response = await client.get(url, timeout=30)
         response.raise_for_status()
-
         result = response.json()
+        data_customer = result.get("data", [])
 
-        customers = result.get("data", [])
+        if not data_customer:
+            return pd.DataFrame()
 
-        cleaned_customers = [
-        {
-            key: value
-            for key, value in customer.items()
-            if key not in ["id", "created_at"]
-        }
-        for customer in customers
-        ]
+        df = pd.DataFrame(data_customer)
 
-        return cleaned_customers
+        drop_cols = [col for col in ["id", "created_at"] if col in df.columns]
+        if drop_cols:
+            df = df.drop(columns=drop_cols)
 
-        # return result.get("data", [])
-    
+        return df

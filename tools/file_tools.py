@@ -9,7 +9,7 @@ DATA_DIR = Path("data_storage")
 def register_file_tools(mcp):
 
     @mcp.tool()
-    async def get_dataset_schema(filename: str) -> str:
+    async def get_file_schema(filename: str) -> str:
         """
         Mengambil skema file (kolom & sampel data untuk CSV/Excel).
         Gunakan tool ini PERTAMA KALI saat pengguna mengunggah file CSV/Excel.
@@ -34,7 +34,7 @@ def register_file_tools(mcp):
 
             elif suffix == ".pdf":
                 reader = PdfReader(filepath)
-                text = f"File Name: {filename} (Dokumen PDF)\nTotal Halaman: {len(reader.pages)}\n\n--- Isi Teks Dokumen ---\n"
+                text = f"File Name: {filename} (Dokumen PDF)\nTotal Halaman: {len(reader.pages)}\n\nIsi Teks Dokumen\n"
 
                 for i, page in enumerate(reader.pages[:15]):
                     text += f"\n[Halaman {i+1}]\n" + (page.extract_text() or "")
