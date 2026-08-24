@@ -63,7 +63,7 @@ def main():
     print(sample_df.to_string(index=False))
 
     print("\n" + "=" * 50)
-    print("⚡ Uji Coba Query Agregasi Sederhana:")
+    print("Uji Coba Query Agregasi Sederhana:")
 
     first_col = schema_df["column_name"].iloc[0]
     query_test = (
