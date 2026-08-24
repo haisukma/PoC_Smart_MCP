@@ -66,7 +66,8 @@ async def init_agent():
     mcp_tools = await load_mcp_tools(mcp_session)
 
     llm = ChatOpenAI(
-        model="openrouter/free",
+        # model="openrouter/free",
+        model="stealth/ox-alpha",
         temperature=0,
         api_key=os.getenv("OPEN_ROUTER_KEY"),
         base_url="https://openrouter.ai/api/v1",

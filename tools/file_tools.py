@@ -1,8 +1,11 @@
 import io
 from pathlib import Path
+import io
+from pathlib import Path
 import sys
 import pandas as pd
 from pypdf import PdfReader
+from e2b_code_interpreter import AsyncSandbox
 
 DATA_DIR = Path("data_storage")
 
@@ -66,8 +69,13 @@ def register_file_tools(mcp):
 
         CATATAN PENTING UNTUK LLM:
         - Tool ini HANYA untuk file CSV/Excel! DILARANG digunakan untuk file PDF.
-        - Variabel `df` SUDAH DILOAD secara otomatis. JANGAN menulis `df = pd.read_csv(...)` lagi!
-        - Langsung manipulasi variabel `df` yang tersedia, lalu WAJIB gunakan `print(...)`.
+        - File SUDAH DI-UPLOAD ke sandbox dengan nama file '{filename}'.
+        - Tulis kode Python lengkap termasuk import library dan membaca file, contoh:
+          import pandas as pd
+          df = pd.read_csv('{filename}') # Atau pd.read_excel('{filename}')
+          # Kerjakan analisis...
+          print(hasil)
+        - WAJIB gunakan `print(...)` untuk menampilkan output analisis!
         """
         filepath = DATA_DIR / filename
         if not filepath.exists():
@@ -79,34 +87,89 @@ def register_file_tools(mcp):
             return (
                 f"Error: File '{filename}' adalah file PDF. "
                 "Fungsi execute_python_analysis hanya untuk file tabular (CSV/Excel). "
-                "Gunakan teks yang sudah didapatkan dari get_dataset_schema untuk menjawab pertanyaan pengguna."
+                "Gunakan teks yang sudah didapatkan dari get_file_schema untuk menjawab pertanyaan pengguna."
             )
 
         try:
-            if suffix == ".csv":
-                df = pd.read_csv(filepath, low_memory=False)
-            elif suffix in [".xlsx", ".xls"]:
-                df = pd.read_excel(filepath)
-            else:
-                return f"Error: Format file '{suffix}' tidak didukung untuk analisis Pandas."
+            sandbox = await AsyncSandbox.create()
 
-            original_stdout = sys.stdout
-            buffer = io.StringIO()
-            sys.stdout = buffer
+            try:
+                with open(filepath, "rb") as f:
+                    file_bytes = f.read()
 
-            local_vars = {
-                "df": df,
-                "pd": pd,
-                "filepath": str(filepath)
-            }
+                await sandbox.files.write(filename, file_bytes)
 
-            exec(python_code, {}, local_vars)
+                execution = await sandbox.run_code(python_code)
 
-            result = buffer.getvalue()
-            return result if result.strip() else "Kode berhasil dieksekusi, tetapi tidak ada output print(). Pastikan menggunakan print()."
+                if execution.error:
+                    return f"Error saat Eksekusi Kode Python di Sandbox:\n{execution.error.name}: {execution.error.value}\n{execution.error.traceback}"
+
+                stdout_results = execution.logs.stdout
+                if stdout_results:
+                    return "\n".join(stdout_results)
+
+                stderr_results = execution.logs.stderr
+                if stderr_results:
+                    return f"Output Stderr:\n" + "\n".join(stderr_results)
+
+                return "Kode berhasil dieksekusi di Sandbox, tetapi tidak ada output print(). Pastikan menggunakan print()."
+
+            finally:
+                await sandbox.kill()
 
         except Exception as e:
-            return f"Error saat Eksekusi Kode Python:\n{str(e)}"
-        finally:
-            sys.stdout = original_stdout
-            buffer.close()
+            import traceback
+            traceback.print_exc()
+            return f"Error pada E2B Sandbox Environment ({type(e).__name__}): {str(e)}"
+
+    # @mcp.tool()
+    # async def execute_python_analysis(filename: str, python_code: str) -> str:
+    #     """
+    #     Menjalankan kode Python Pandas untuk menganalisis data CSV atau Excel.
+
+    #     CATATAN PENTING UNTUK LLM:
+    #     - Tool ini HANYA untuk file CSV/Excel! DILARANG digunakan untuk file PDF.
+    #     - Variabel `df` SUDAH DILOAD secara otomatis. JANGAN menulis `df = pd.read_csv(...)` lagi!
+    #     - Langsung manipulasi variabel `df` yang tersedia, lalu WAJIB gunakan `print(...)`.
+    #     """
+    #     filepath = DATA_DIR / filename
+    #     if not filepath.exists():
+    #         return f"Error: File '{filename}' tidak ditemukan di folder data_storage."
+
+    #     suffix = filepath.suffix.lower()
+
+    #     if suffix == ".pdf":
+    #         return (
+    #             f"Error: File '{filename}' adalah file PDF. "
+    #             "Fungsi execute_python_analysis hanya untuk file tabular (CSV/Excel). "
+    #             "Gunakan teks yang sudah didapatkan dari get_dataset_schema untuk menjawab pertanyaan pengguna."
+    #         )
+
+    #     try:
+    #         if suffix == ".csv":
+    #             df = pd.read_csv(filepath, low_memory=False)
+    #         elif suffix in [".xlsx", ".xls"]:
+    #             df = pd.read_excel(filepath)
+    #         else:
+    #             return f"Error: Format file '{suffix}' tidak didukung untuk analisis Pandas."
+
+    #         original_stdout = sys.stdout
+    #         buffer = io.StringIO()
+    #         sys.stdout = buffer
+
+    #         local_vars = {
+    #             "df": df,
+    #             "pd": pd,
+    #             "filepath": str(filepath)
+    #         }
+
+    #         exec(python_code, {}, local_vars)
+
+    #         result = buffer.getvalue()
+    #         return result if result.strip() else "Kode berhasil dieksekusi, tetapi tidak ada output print(). Pastikan menggunakan print()."
+
+    #     except Exception as e:
+    #         return f"Error saat Eksekusi Kode Python:\n{str(e)}"
+    #     finally:
+    #         sys.stdout = original_stdout
+    #         buffer.close()
