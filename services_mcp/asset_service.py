@@ -17,12 +17,12 @@ async def get_asset_df() -> pd.DataFrame:
         response = await client.get(url, timeout=30)
         response.raise_for_status()
         result = response.json()
-        data_sales = result.get("data", [])
+        data_asset = result.get("data", [])
 
-        if not data_sales:
+        if not data_asset:
             return pd.DataFrame()
 
-        df = pd.DataFrame(data_sales)
+        df = pd.DataFrame(data_asset)
 
         drop_cols = [col for col in ["id", "created_at"] if col in df.columns]
         if drop_cols:

@@ -132,9 +132,7 @@ async def stream_agent_response(
     filename: str | None = None
 ):
     start_time = time.perf_counter()
-
     agent = get_active_agent()
-
     messages = []
 
     if filename:
@@ -145,40 +143,100 @@ async def stream_agent_response(
         ))
 
     messages.append(("user", user_input))
-
-    inputs = {
-        "messages": messages
-    }
+    inputs = {"messages": messages}
 
     config = {
         "configurable": {
             "thread_id": thread_id,
         },
-        # "recursion_limit": 5
+        "recursion_limit": 25
     }
 
-    async for event in agent.astream_events(
-        inputs,
-        config=config,
-        version="v2"
-    ):
-        kind = event["event"]
+    try:
+        async for event in agent.astream_events(
+            inputs,
+            config=config,
+            version="v2"
+        ):
+            kind = event["event"]
 
-        if kind == "on_chat_model_stream":
-            content = event["data"]["chunk"].content
+            if kind == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                if content:
+                    yield content
 
-            if content:
-                yield content
-
-        elif kind == "on_tool_start":
-            print(f"\n[MCP TOOL DIPANGGIL]: {event['name']}")
+            elif kind == "on_tool_start":
+                print(f"\n[MCP TOOL DIPANGGIL]: {event['name']}")
+                
+    except Exception as e:
+        if "recursion limit" in str(e).lower():
+            warning_msg = (
+                "\n\nSistem Memotong Eksekusi Paksa:\n"
+                "Proses analisis data terlalu panjang dan berputar-putar. "
+                "Mohon berikan pertanyaan yang lebih spesifik atau periksa kembali format data Anda."
+            )
+            print("\n[PERINGATAN SISTEM]: Agent dihentikan paksa karena menyentuh recursion_limit.")
+            yield warning_msg
+        else:
+            yield f"\n\n[Sistem Error]: {str(e)}"
 
     execution_time = time.perf_counter() - start_time
+    print(f"\nTOTAL WAKTU EKSEKUSI: {execution_time:.2f} detik")
 
-    print(
-        f"\nTOTAL WAKTU EKSEKUSI: "
-        f"{execution_time:.2f} detik"
-    )
+
+# async def stream_agent_response(
+#     user_input: str,
+#     thread_id: str,
+#     filename: str | None = None
+# ):
+#     start_time = time.perf_counter()
+
+#     agent = get_active_agent()
+
+#     messages = []
+
+#     if filename:
+#         messages.append((
+#             "system",
+#             f"[INFO SISTEM]: Pengguna mengunggah file '{filename}'.\n"
+#             f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu."
+#         ))
+
+#     messages.append(("user", user_input))
+
+#     inputs = {
+#         "messages": messages
+#     }
+
+#     config = {
+#         "configurable": {
+#             "thread_id": thread_id,
+#         },
+#         # "recursion_limit": 5
+#     }
+
+#     async for event in agent.astream_events(
+#         inputs,
+#         config=config,
+#         version="v2"
+#     ):
+#         kind = event["event"]
+
+#         if kind == "on_chat_model_stream":
+#             content = event["data"]["chunk"].content
+
+#             if content:
+#                 yield content
+
+#         elif kind == "on_tool_start":
+#             print(f"\n[MCP TOOL DIPANGGIL]: {event['name']}")
+
+#     execution_time = time.perf_counter() - start_time
+
+#     print(
+#         f"\nTOTAL WAKTU EKSEKUSI: "
+#         f"{execution_time:.2f} detik"
+#     )
 
 @app.post("/chat")
 async def chat_endpoint(
