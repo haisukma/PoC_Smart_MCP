@@ -2,11 +2,10 @@ from pathlib import Path
 import duckdb
 import pandas as pd
 
-FILE_NAME = "/Users/diajeng/Documents/si-smart/data_storage/LAPORAN TEGAKAN.csv"
+FILE_NAME = "/Users/diajeng/Documents/si-smart/data_storage/LAPORAN_TEGAKAN.csv"
 DATA_DIR = Path("/Users/diajeng/Documents/si-smart/data_storage")
 FILE_PATH = DATA_DIR / FILE_NAME
 DB_FILE = Path("my_data.duckdb")
-
 
 def main():
     print(f"=== 1. PENGECEKAN FILE ===")

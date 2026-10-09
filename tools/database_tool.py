@@ -26,7 +26,7 @@ def register_database_tools(mcp):
     def execute_read_query_tool(query: str):
         """
         Menjalankan query SQL SELECT secara read-only
-        pada database smart_mcp_db.
+        pada database smart_mcp_db yang berisi data employee, inventory products, dan support ticket.
 
         Gunakan hanya untuk membaca data.
         Query INSERT, UPDATE, DELETE, DROP, ALTER,

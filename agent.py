@@ -82,8 +82,9 @@ async def init_agent():
     llm = ChatOpenAI(
         model="openrouter/free",
         # model="stealth/ox-alpha",
-        temperature=0,
-        api_key=os.getenv("OPEN_ROUTER_KEY1"),
+        temperature=0.1,
+        # max_tokens=2000,
+        api_key=os.getenv("OPEN_ROUTER_KEY"),
         base_url="https://openrouter.ai/api/v1",
     )
 

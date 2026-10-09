@@ -244,6 +244,13 @@ def register_file_tools(mcp):
                 if result_df.empty:
                     return "Kueri berhasil dieksekusi, tetapi tidak mengembalikan data (hasil kosong)."
 
+                if len(result_df) > 15:
+                    truncated_df = result_df.head(15).to_string(index=False)
+                    return (
+                        f"[SISTEM INFO: Hasil kueri terlalu panjang. Menampilkan 15 dari total {len(result_df)} baris data]:\n\n"
+                        f"{truncated_df}"
+                    )
+
                 return result_df.to_string(index=False)
 
         except Exception as e:

@@ -1,4 +1,6 @@
 .env
 smart_mcp/
 .DS_Store
+ARCHITECTURE.md
+data_storage/
 __pycache__/

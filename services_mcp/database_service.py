@@ -22,7 +22,7 @@ BLOCKED_TABLES = ["inventory_products"]
 
 def get_database_schema():
     """
-    Mengambil informasi tabel dan kolom dari database, kecuali tabel inventory_products.
+    Mengambil informasi tabel dan kolom dari database yang berisi data employee, inventory products, dan support ticket.
     """
 
     conn = get_connection()
