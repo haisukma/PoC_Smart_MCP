@@ -3,6 +3,7 @@ import shutil
 from pathlib import Path
 import asyncio
 import re
+import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException, status
 from fastapi.responses import StreamingResponse
@@ -65,7 +66,6 @@ INJECTION_PATTERNS = [
 COMPILED_INJECTION_REGEX = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
 
 def validate_prompt_injection(user_input: str):
-    """Mengecek apakah input mengandung indikasi Prompt Injection."""
     for pattern in COMPILED_INJECTION_REGEX:
         if pattern.search(user_input):
             return True
@@ -94,13 +94,14 @@ async def run_agent_with_timeout(
         timeout=timeout_seconds
     )
 
+tool_start_times = {}
+
 async def stream_agent_response(
     user_input: str,
     thread_id: str,
     filename: str | None = None
 ):
     start_time = time.perf_counter()
-
     TIMEOUT_SECONDS = 120
 
     agent = get_active_agent()
@@ -141,13 +142,8 @@ async def stream_agent_response(
                     f"\n[PERINGATAN]: Agent timeout "
                     f"setelah {TIMEOUT_SECONDS} detik."
                 )
-
                 yield (
-                    f"\n\n[Sistem]: Proses analisis dihentikan "
-                    f"karena melebihi batas waktu "
-                    f"{TIMEOUT_SECONDS} detik."
-                )
-
+                    f"\n\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu {TIMEOUT_SECONDS} detik")
                 break
 
             kind = event["event"]
@@ -159,63 +155,67 @@ async def stream_agent_response(
                     yield content
 
             elif kind == "on_tool_start":
-                tool_name = event["name"]
+                tool_name = event.get("name") or event.get("data", {}).get("name") or "unknown_tool"
+
+                tool_start_times[tool_name] = time.perf_counter()
 
                 print(
-                    f"\n[MCP TOOL DIPANGGIL]: {tool_name}"
+                    f"\n[MCP TOOL DIPANGGIL]: {tool_name}",
+                    file=sys.stderr
                 )
 
-                tool_input = event["data"].get(
-                    "input",
-                    {}
-                )
-
+                tool_input = event["data"].get("input", {})
                 print(
-                    f"TOOL INPUT: {tool_input}"
+                    f"TOOL INPUT: {tool_input}",
+                    file=sys.stderr
                 )
 
                 if tool_name in PYTHON_ANALYSIS_TOOLS:
                     code = tool_input.get("code")
-
                     if code:
-
-                        print("\n" + "=" * 70)
                         print("PYTHON CODE DARI LLM")
-                        print("=" * 70)
-
-                        print(code)
-
-                        print("=" * 70)
+                        print(code, file=sys.stderr)
 
             elif kind == "on_tool_end":
-
+                tool_name = event.get("name") or event.get("data", {}).get("name") or "unknown_tool"
+                start_time_tool = tool_start_times.get(tool_name)
+                tool_output = event["data"].get("output", {})
                 print(
-                    f"\n[MCP TOOL SELESAI]: {event['name']}"
+                    f"TOOL OUTPUT: {tool_output}",
+                    file=sys.stderr
                 )
+
+                if start_time_tool:
+                    duration =time.perf_counter() - start_time_tool
+                    print(
+                        f"[MCP TOOL SELESAI]: {tool_name} (Durasi: {duration:.2f} detik)",
+                        file=sys.stderr
+                    )
+                    del tool_start_times[tool_name]
+
+                else:
+                    print(
+                        f"[MCP TOOL SELESAI]: {tool_name}",
+                        file=sys.stderr
+                    )
 
     except Exception as e:
         if "recursion limit" in str(e).lower():
-
             print(
-                "\n[PERINGATAN SISTEM]: "
-                "Agent dihentikan karena recursion_limit."
+                "\n[PERINGATAN SISTEM]: Agent dihentikan karena recursion_limit",
+                file=sys.stderr
             )
-
-            yield (
-                "\n\nSistem Memotong Eksekusi Paksa:\n"
-                "Proses analisis data terlalu panjang dan berputar-putar."
-            )
+            yield ("\n\nSistem Memotong Eksekusi Paksa:\nProses analisis data terlalu panjang dan berputar-putar")
 
         else:
-
             yield f"\n\n[Sistem Error]: {str(e)}"
 
     execution_time = time.perf_counter() - start_time
 
-    print(
-        f"\nTOTAL WAKTU EKSEKUSI: "
-        f"{execution_time:.2f} detik"
-    )
+    # print(
+    #     f"\nTOTAL WAKTU EKSEKUSI: "
+    #     f"{execution_time:.2f} detik"
+    # )
 
 @app.post("/chat")
 async def chat_endpoint(

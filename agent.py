@@ -83,7 +83,7 @@ async def init_agent():
         # model="stealth/ox-alpha",
         temperature=0.1,
         # max_tokens=2000,
-        api_key=os.getenv("OPEN_ROUTER_KEY"),
+        api_key=os.getenv("OPEN_ROUTER_KEY1"),
         base_url="https://openrouter.ai/api/v1",
     )
 
