@@ -1,8 +1,8 @@
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from langchain_mcp_adapters.tools import load_mcp_tools
-from langchain_ollama import ChatOllama
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_ollama import ChatOllama
+# from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage
@@ -61,8 +61,7 @@ Kamu adalah Analyst Agent yang efisien dan to the point. Jawab dalam BAHASA INDO
   * Dokumen Teks (PDF/WORD/TXT): Panggil `get_file_schema` -> Langsung jawab. DILARANG panggil DuckDB/Python!
   * Tabel Data (CSV/EXCEL):
     1. Panggil `get_file_schema`. Jangan hanya membaca schema! Kamu wajib mengeksekusi DuckDB untuk analisis data real.
-    2. PERTANYAAN DETAIL: Panggil `execute_duckdb_analysis` dengan query SQL spesifik pada tabel `dataset` (misal: `SELECT * FROM dataset WHERE STATUS = 'KRITIS'`).
-    3. PERTANYAAN KESIMPULAN: Panggil `execute_duckdb_analysis` untuk melihat sebaran/distribusi data pada kolom-kolom utama tabel `dataset` (misal: `SELECT STATUS, COUNT(*) FROM dataset GROUP BY STATUS`), LALU rangkum temuan tersebut menjadi insight mendalam! DILARANG menyimpulkan tanpa eksekusi DuckDB!
+    2. Panggil `execute_duckdb_analysis` dengan query SQL spesifik pada tabel `dataset` (misal: `SELECT * FROM dataset WHERE STATUS = 'KRITIS'`).
 </tool_routing>
 </system_instructions>
 """
