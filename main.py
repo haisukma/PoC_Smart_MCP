@@ -7,6 +7,7 @@ import sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Form, UploadFile, File, HTTPException, status
 from fastapi.responses import StreamingResponse
+import logging
 from agent import init_agent, shutdown_agent, get_active_agent
 
 @asynccontextmanager
@@ -64,6 +65,13 @@ INJECTION_PATTERNS = [
 ]
 
 COMPILED_INJECTION_REGEX = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    filename="app_monitoring2.log",
+    filemode="a"
+)
 
 def validate_prompt_injection(user_input: str):
     for pattern in COMPILED_INJECTION_REGEX:
@@ -138,10 +146,11 @@ async def stream_agent_response(
 
             if elapsed > TIMEOUT_SECONDS:
 
-                print(
-                    f"\n[PERINGATAN]: Agent timeout "
-                    f"setelah {TIMEOUT_SECONDS} detik"
-                )
+                # print(
+                #     f"\n[PERINGATAN]: Agent timeout "
+                #     f"setelah {TIMEOUT_SECONDS} detik"
+                # )
+                logging.warning(f"PERINGATAN: Agent timeout setelah {TIMEOUT_SECONDS} detik")
                 yield (
                     f"\n\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu {TIMEOUT_SECONDS} detik")
                 break
@@ -159,38 +168,43 @@ async def stream_agent_response(
 
                 tool_start_times[tool_name] = time.perf_counter()
 
-                print(
-                    f"\n[MCP TOOL DIPANGGIL]: {tool_name}",
-                    file=sys.stderr
-                )
+                # print(
+                #     f"\n[MCP TOOL DIPANGGIL]: {tool_name}",
+                #     file=sys.stderr
+                # )
+                logging.info(f"[MCP TOOL DIPANGGIL]: {tool_name}")
 
                 tool_input = event["data"].get("input", {})
                 print(
                     f"TOOL INPUT: {tool_input}",
                     file=sys.stderr
                 )
+                logging.info(f"TOOL INPUT: {tool_input}")
 
                 if tool_name in PYTHON_ANALYSIS_TOOLS:
                     code = tool_input.get("code")
                     if code:
                         print("PYTHON CODE DARI LLM")
                         print(code, file=sys.stderr)
+                        # logging.info(f"Code LLM: {code}")
 
             elif kind == "on_tool_end":
                 tool_name = event.get("name") or event.get("data", {}).get("name") or "unknown_tool"
                 start_time_tool = tool_start_times.get(tool_name)
                 tool_output = event["data"].get("output", {})
-                print(
-                    f"TOOL OUTPUT: {tool_output}",
-                    file=sys.stderr
-                )
+                # print(
+                #     f"TOOL OUTPUT: {tool_output}",
+                #     file=sys.stderr
+                # )
+                logging.info(f"TOOL OUTPUT: {tool_output}")
 
                 if start_time_tool:
                     duration =time.perf_counter() - start_time_tool
-                    print(
-                        f"[MCP TOOL SELESAI]: {tool_name} (Durasi: {duration:.2f} detik)",
-                        file=sys.stderr
-                    )
+                    # print(
+                    #     f"[MCP TOOL SELESAI]: {tool_name} (Durasi: {duration:.2f} detik)",
+                    #     file=sys.stderr
+                    # )
+                    logging.info(f"MCP TOOL SELESAI: {tool_name} (Durasi: {duration:.2f} detik)")
                     del tool_start_times[tool_name]
 
                 else:
@@ -198,17 +212,22 @@ async def stream_agent_response(
                         f"[MCP TOOL SELESAI]: {tool_name}",
                         file=sys.stderr
                     )
+                    # logging.info(f"MCP TOOL SELESAI: {tool_name}")
 
     except Exception as e:
         if "recursion limit" in str(e).lower():
-            print(
-                "\n[PERINGATAN SISTEM]: Agent dihentikan karena recursion_limit",
-                file=sys.stderr
-            )
+            # print(
+            #     "\n[PERINGATAN SISTEM]: Agent dihentikan karena recursion_limit",
+            #     file=sys.stderr
+            # )
+            logging.warning(f"PERINGATAN SISTEM: Agent dihentikan karena recursion limit")
             yield ("\n\nSistem Memotong Eksekusi Paksa:\nProses analisis data terlalu panjang dan berputar-putar")
 
         else:
             yield f"\n\n[Sistem Error]: {str(e)}"
+
+    log_file = open("app_monitoring.log", "w")
+    sys.stderr = log_file
 
 @app.post("/chat")
 async def chat_endpoint(
@@ -217,7 +236,8 @@ async def chat_endpoint(
     file: UploadFile | None = File(None)
 ):
     if validate_prompt_injection(message):
-        print(f"\n[PERINGATAN]: Prompt Injection terdeteksi pada input: '{message}'")
+        # print(f"\n[PERINGATAN]: Prompt Injection terdeteksi pada input: '{message}'")
+        logging.error(f"PERINGATAN: Prompt Injection terdeteksi pada input: '{message}'")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection"

@@ -3,7 +3,11 @@ from pathlib import Path
 import io
 from pathlib import Path
 import sys
+import traceback
 import pandas as pd
+import numpy as np
+import json
+import datetime
 from pypdf import PdfReader
 from e2b_code_interpreter import AsyncSandbox
 
@@ -104,12 +108,13 @@ def register_file_tools(mcp):
             sandbox = await AsyncSandbox.create()
 
             try:
+
                 with open(filepath, "rb") as f:
                     file_bytes = f.read()
 
                 await sandbox.files.write(filename, file_bytes)
 
-                execution = await sandbox.run_code(python_code)
+                execution = await sandbox.run_code(python_code, timeout=30)
 
                 if execution.error:
                     return f"Error saat Eksekusi Kode Python di Sandbox:\n{execution.error.name}: {execution.error.value}\n{execution.error.traceback}"
@@ -128,7 +133,6 @@ def register_file_tools(mcp):
                 await sandbox.kill()
 
         except Exception as e:
-            import traceback
             traceback.print_exc()
             return f"Error pada E2B Sandbox Environment ({type(e).__name__}): {str(e)}"
 
