@@ -1,6 +1,9 @@
 import io
 import contextlib
 import pandas as pd
+import numpy as np
+import json
+import datetime
 from services_mcp.salesperformance_service import get_sales_performance_df
 
 _SALES_DF: pd.DataFrame = None
@@ -16,8 +19,8 @@ def register_sales_performance_tools(mcp):
     @mcp.tool()
     async def execute_sales_python_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis data Sales Performance dari API.
-        Mengeksekusi kode Python pada variabel `df` (Pandas DataFrame sales).
+        Gunakan tool ini untuk menganalisis data Sales Performance dari API
+        Mengeksekusi kode Python pada variabel `df` (Pandas DataFrame sales)
 
         Args:
             code: Kode Python yang akan dieksekusi. WAJIB menggunakan print(...) untuk melihat output!
@@ -27,13 +30,39 @@ def register_sales_performance_tools(mcp):
         try:
             df = await _get_cached_sales_df()
             if df.empty:
-                return "Data sales performance dari API kosong."
+                return "Data sales performance dari API kosong"
+
+            safe_builtins = {
+                "print": print,
+                "range": range,
+                "len": len,
+                "str": str,
+                "int": int,
+                "float": float,
+                "list": list,
+                "dict": dict,
+                "set": set,
+                "tuple": tuple,
+                "sum": sum,
+                "min": min,
+                "max": max,
+                "abs": abs,
+                "round": round
+            }
+
+            safe_globals = {
+                "__builtins__": safe_builtins,
+                "pd": pd,
+                "np": np,
+                "json": json,
+                "datetime": datetime
+            }
 
             local_vars_sales = {"df": df, "pd": pd}
             output_buffer_sales = io.StringIO()
 
             with contextlib.redirect_stdout(output_buffer_sales):
-                exec(code, {}, local_vars_sales)
+                exec(code, safe_globals, local_vars_sales)
 
             result = output_buffer_sales.getvalue()
             return result if result.strip() else "Kode berhasil dieksekusi tanpa output print."
