@@ -112,7 +112,7 @@ async def shutdown_agent():
     # print("MCP Connection Closed Cleanly")
 
 def get_active_agent():
-    """Helper function agar memanggil instance agent_executor yang sudah terisi."""
+    """Helper function agar memanggil instance agent_executor yang sudah terisi"""
     if agent_executor is None:
         raise RuntimeError("Agent belum di-inisialisasi oleh FastAPI lifespan!")
     return agent_executor

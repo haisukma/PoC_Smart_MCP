@@ -8,7 +8,7 @@ def register_database_tools(mcp):
     @mcp.tool()
     def get_database_schema_tool():
         """
-        Mendapatkan struktur database smart_mcp_db yang berisi data employee, inventory products, dan support ticket.
+        Mendapatkan struktur database smart_mcp_db yang berisi data employee, inventory products, dan support ticket
 
         Gunakan tool ini terlebih dahulu untuk mengetahui:
         - tabel yang tersedia
@@ -17,7 +17,7 @@ def register_database_tools(mcp):
         - primary key
 
         Tool ini membantu memahami struktur database
-        sebelum membuat query SQL.
+        sebelum membuat query SQL
         """
 
         return get_database_schema()
@@ -26,15 +26,15 @@ def register_database_tools(mcp):
     def execute_read_query_tool(query: str):
         """
         Menjalankan query SQL SELECT secara read-only
-        pada database smart_mcp_db yang berisi data employee, inventory products, dan support ticket.
+        pada database smart_mcp_db yang berisi data employee, inventory products, dan support ticket
 
         Gunakan hanya untuk membaca data.
         Query INSERT, UPDATE, DELETE, DROP, ALTER,
         CREATE, dan operasi perubahan data lainnya
-        tidak diperbolehkan.
+        tidak diperbolehkan
 
         Args:
-            query: Query SQL SELECT yang akan dijalankan.
+            query: Query SQL SELECT yang akan dijalankan
         """
 
         try:

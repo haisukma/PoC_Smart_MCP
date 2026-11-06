@@ -7,7 +7,7 @@ load_dotenv()
 
 def get_connection():
     """
-    Membuat koneksi ke database MySQL.
+    Membuat koneksi ke database MySQL
     """
 
     return mysql.connector.connect(
@@ -22,7 +22,7 @@ BLOCKED_TABLES = ["inventory_products"]
 
 def get_database_schema():
     """
-    Mengambil informasi tabel dan kolom dari database yang berisi data employee, inventory products, dan support ticket.
+    Mengambil informasi tabel dan kolom dari database yang berisi data employee, inventory products, dan support ticket
     """
 
     conn = get_connection()
@@ -85,15 +85,15 @@ def get_database_schema():
 
 def execute_read_query(query: str):
     """
-    Menjalankan query SQL read-only.
-    Hanya SELECT yang diperbolehkan.
+    Menjalankan query SQL read-only
+    Hanya SELECT yang diperbolehkan
     """
 
     query_clean = query.strip()
 
     if not query_clean.lower().startswith("select"):
         raise ValueError(
-            "Query ditolak. Hanya query SELECT yang diperbolehkan."
+            "Query ditolak. Hanya query SELECT yang diperbolehkan"
         )
 
     # for blocked_table in BLOCKED_TABLES:

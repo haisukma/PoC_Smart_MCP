@@ -9,7 +9,7 @@ def register_neutron_tools(mcp):
 
         """
         Mengambil seluruh daftar cabang Neutron
-        dari website neutron.co.id.
+        dari website neutron.co.id
         """
 
         result = await scrape_neutron_branches()

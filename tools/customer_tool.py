@@ -16,8 +16,8 @@ def register_customer_tools(mcp):
     @mcp.tool()
     async def execute_customer_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis data Customer dari API.
-        Mengeksekusi kode Python pada variabel `df` (Pandas DataFrame customer).
+        Gunakan tool ini untuk menganalisis data Customer dari API
+        Mengeksekusi kode Python pada variabel `df` (Pandas DataFrame customer)
 
         Args:
             code: kode Python yang akan dieksekusi. Wajib menggunakan print(...) untuk melihat output!
@@ -27,7 +27,7 @@ def register_customer_tools(mcp):
         try:
             df = await _get_cached_customer_df()
             if df.empty:
-                return "Data customer dari API kosong."
+                return "Data customer dari API kosong"
 
             local_vars_customer = {"df": df, "pd": pd}
             output_buffer_customer = io.StringIO()

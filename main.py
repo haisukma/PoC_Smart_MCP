@@ -111,7 +111,7 @@ async def stream_agent_response(
         messages.append((
             "system",
             f"[INFO SISTEM]: Pengguna mengunggah file '{filename}'.\n"
-            f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu."
+            f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"
         ))
 
     messages.append(("user", user_input))
@@ -140,7 +140,7 @@ async def stream_agent_response(
 
                 print(
                     f"\n[PERINGATAN]: Agent timeout "
-                    f"setelah {TIMEOUT_SECONDS} detik."
+                    f"setelah {TIMEOUT_SECONDS} detik"
                 )
                 yield (
                     f"\n\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu {TIMEOUT_SECONDS} detik")

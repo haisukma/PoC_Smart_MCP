@@ -11,20 +11,20 @@ async def search_web(
     max_results: int = 5,
 ) -> list[dict]:
     """
-    Mencari informasi dari internet menggunakan Tavily.
+    Mencari informasi dari internet menggunakan Tavily
 
     Args:
-        query: Query pencarian.
-        max_results: Jumlah maksimal hasil.
+        query: Query pencarian
+        max_results: Jumlah maksimal hasil
 
     Returns:
-        List hasil pencarian.
+        List hasil pencarian
     """
 
     api_key = os.getenv("TAVILY_API_KEY")
 
     if not api_key:
-        raise RuntimeError("TAVILY_API_KEY belum dikonfigurasi.")
+        raise RuntimeError("TAVILY_API_KEY belum dikonfigurasi")
 
     payload = {
         "api_key": api_key,

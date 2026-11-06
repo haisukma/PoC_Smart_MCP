@@ -8,10 +8,10 @@ def register_web_search_tools(mcp):
         max_results: int = 5,
     ) -> str:
         """
-        Mencari informasi dari internet.
+        Mencari informasi dari internet
 
         Gunakan tool ini HANYA jika informasi yang dibutuhkan
-        berasal dari internet atau membutuhkan informasi terkini.
+        berasal dari internet atau membutuhkan informasi terkini
 
         Gunakan untuk:
         - informasi terbaru
@@ -27,11 +27,11 @@ def register_web_search_tools(mcp):
         - data dari file upload
         - informasi yang sudah tersedia dari tool lain
 
-        Gunakan jumlah pencarian seminimal mungkin.
+        Gunakan jumlah pencarian seminimal mungkin
 
         Args:
-            query: Query pencarian yang spesifik dan ringkas.
-            max_results: Jumlah hasil pencarian. Default 5.
+            query: Query pencarian yang spesifik dan ringkas
+            max_results: Jumlah hasil pencarian. Default 5
         """
 
         try:

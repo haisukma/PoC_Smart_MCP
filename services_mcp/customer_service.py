@@ -9,7 +9,7 @@ API_BASE_URL = os.getenv("API_BASE_URL")
 
 async def get_customer_df() -> pd.DataFrame:
     """
-    Mengambil data customer dari API dan mengembalikannya sebagai Pandas DataFrame.
+    Mengambil data customer dari API dan mengembalikannya sebagai Pandas DataFrame
     """
     url = f"{API_BASE_URL}/customer"
 

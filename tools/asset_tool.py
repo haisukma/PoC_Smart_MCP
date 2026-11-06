@@ -16,8 +16,8 @@ def register_asset_tools(mcp):
     @mcp.tool()
     async def execute_asset_python_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis data Asset dari API.
-        Mengeksekusi kode Python pada variabel `df` (Pandas DataFrame sales).
+        Gunakan tool ini untuk menganalisis data Asset dari API
+        Mengeksekusi kode Python pada variabel `df` (Pandas DataFrame sales)
 
         Args:
             code: Kode Python yang akan dieksekusi. WAJIB menggunakan print(...) untuk melihat output!
@@ -26,7 +26,7 @@ def register_asset_tools(mcp):
         try:
             df = await _get_cached_asset_df()
             if df.empty:
-                return "Data asset dari API kosong."
+                return "Data asset dari API kosong"
 
             local_vars_asset = {"df": df, "pd": pd}
             output_buffer_asset = io.StringIO()
@@ -35,7 +35,7 @@ def register_asset_tools(mcp):
                 exec(code, {}, local_vars_asset)
 
             result = output_buffer_asset.getvalue()
-            return result if result.strip() else "Kode berhasil dieksekusi tanpa output print."
+            return result if result.strip() else "Kode berhasil dieksekusi tanpa output print"
 
         except Exception as e:
             return f"Error executing Python code: {str(e)}"

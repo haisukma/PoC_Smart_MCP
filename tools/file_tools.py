@@ -14,16 +14,16 @@ def register_file_tools(mcp):
     @mcp.tool()
     async def get_file_schema(filename: str) -> str:
         """
-        Mengambil skema file (kolom & sampel data untuk CSV/Excel).
-        Gunakan tool ini PERTAMA KALI saat pengguna mengunggah file CSV/Excel.
+        Mengambil skema file (kolom & sampel data untuk CSV/Excel)
+        Gunakan tool ini PERTAMA KALI saat pengguna mengunggah file CSV/Excel
 
         PERINGATAN STRICT:
-        - DILARANG dipanggil untuk data API (Sales Performance, Asset, Customer).
-        - HANYA dipanggil jika ada argumen `filename` file yang diunggah.
+        - DILARANG dipanggil untuk data API (Sales Performance, Asset, Customer)
+        - HANYA dipanggil jika ada argumen `filename` file yang diunggah
         """
         filepath = DATA_DIR / filename
         if not filepath.exists():
-            return f"Error: File '{filename}' tidak ditemukan di folder data_storage."
+            return f"Error: File '{filename}' tidak ditemukan di folder data_storage"
 
         suffix = filepath.suffix.lower()
         try:
@@ -42,10 +42,10 @@ def register_file_tools(mcp):
                 for i, page in enumerate(reader.pages[:15]):
                     text += f"\n[Halaman {i+1}]\n" + (page.extract_text() or "")
                 
-                return text if text.strip() else "File PDF berhasil dibaca, tetapi tidak ada teks yang terekstrak."
+                return text if text.strip() else "File PDF berhasil dibaca, tetapi tidak ada teks yang terekstrak"
 
             else:
-                return f"Error: Format file '{suffix}' belum didukung."
+                return f"Error: Format file '{suffix}' belum didukung"
 
             output = []
             output.append(f"File Name: {filename}")
@@ -65,11 +65,11 @@ def register_file_tools(mcp):
     @mcp.tool()
     async def execute_python_analysis(filename: str, python_code: str) -> str:
         """
-        Menjalankan kode Python Pandas untuk menganalisis data CSV atau Excel.
+        Menjalankan kode Python Pandas untuk menganalisis data CSV atau Excel
 
         CATATAN PENTING UNTUK LLM:
-        - Tool ini HANYA untuk file CSV/Excel! DILARANG digunakan untuk file PDF.
-        - File SUDAH DI-UPLOAD ke sandbox dengan nama file '{filename}'.
+        - Tool ini HANYA untuk file CSV/Excel! DILARANG digunakan untuk file PDF
+        - File SUDAH DI-UPLOAD ke sandbox dengan nama file '{filename}'
         - Tulis kode Python lengkap termasuk import library dan membaca file, contoh:
           import pandas as pd
           df = pd.read_csv('{filename}') # Atau pd.read_excel('{filename}')
@@ -77,17 +77,27 @@ def register_file_tools(mcp):
           print(hasil)
         - WAJIB gunakan `print(...)` untuk menampilkan output analisis!
         """
-        filepath = DATA_DIR / filename
-        if not filepath.exists():
-            return f"Error: File '{filename}' tidak ditemukan di folder data_storage."
+
+        BASE_DIR = DATA_DIR.resolve()
+        try:
+            filepath = (BASE_DIR / filename).resolve()
+
+            if not str(filepath).startswith(str(BASE_DIR)):
+                return "Error: Akses file ditolak"
+
+            if not filepath.exists():
+                return f"Error: FIle '{filename}' tidak ditemukan"
+
+        except Exception:
+            return "Error: Nama file tidak valid"
 
         suffix = filepath.suffix.lower()
 
         if suffix == ".pdf":
             return (
-                f"Error: File '{filename}' adalah file PDF. "
-                "Fungsi execute_python_analysis hanya untuk file tabular (CSV/Excel). "
-                "Gunakan teks yang sudah didapatkan dari get_file_schema untuk menjawab pertanyaan pengguna."
+                f"Error: File '{filename}' adalah file PDF "
+                "Fungsi execute_python_analysis hanya untuk file tabular (CSV/Excel) "
+                "Gunakan teks yang sudah didapatkan dari get_file_schema untuk menjawab pertanyaan pengguna"
             )
 
         try:
@@ -112,7 +122,7 @@ def register_file_tools(mcp):
                 if stderr_results:
                     return f"Output Stderr:\n" + "\n".join(stderr_results)
 
-                return "Kode berhasil dieksekusi di Sandbox, tetapi tidak ada output print(). Pastikan menggunakan print()."
+                return "Kode berhasil dieksekusi di Sandbox, tetapi tidak ada output print(). Pastikan menggunakan print()"
 
             finally:
                 await sandbox.kill()

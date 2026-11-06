@@ -6,7 +6,7 @@ from pypdf import PdfReader
 def get_file_schema(file_path: str) -> str:
     """
     Mengambil ringkasan skema file (kolom, tipe data, sampel 3 baris)
-    tanpa membaca seluruh isi file.
+    tanpa membaca seluruh isi file
     """
     path = Path(file_path)
     suffix = path.suffix.lower()
@@ -35,7 +35,7 @@ def get_file_schema(file_path: str) -> str:
                 text += f"Halaman {i+1}\n"
                 text += (page.extract_text() or "") + "\n\n"
 
-            return text if text.strip() else "PDF berhasil dibaca, tetapi tidak ada teks yang terekstrak (mungkin berupa hasil scan/gambar)."
+            return text if text.strip() else "PDF berhasil dibaca, tetapi tidak ada teks yang terekstrak (mungkin berupa hasil scan/gambar)"
         except Exception as e:
             return f"Error membaca PDF: {str(e)}"
     
