@@ -101,7 +101,7 @@ async def init_agent():
         checkpointer=checkpointer
     )
 
-    print("Agent & Persistent MCP Server Ready!")
+    # print("Agent & Persistent MCP Server Ready!")
 
 async def shutdown_agent():
     global mcp_session, mcp_context
@@ -109,7 +109,7 @@ async def shutdown_agent():
         await mcp_session.__aexit__(None, None, None)
     if mcp_context:
         await mcp_context.__aexit__(None, None, None)
-    print("MCP Connection Closed Cleanly.")
+    # print("MCP Connection Closed Cleanly")
 
 def get_active_agent():
     """Helper function agar memanggil instance agent_executor yang sudah terisi."""

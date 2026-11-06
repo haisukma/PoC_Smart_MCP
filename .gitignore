@@ -3,4 +3,5 @@ smart_mcp/
 .DS_Store
 ARCHITECTURE.md
 data_storage/
+app_monitoring.log
 __pycache__/

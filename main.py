@@ -102,7 +102,7 @@ async def stream_agent_response(
     filename: str | None = None
 ):
     start_time = time.perf_counter()
-    TIMEOUT_SECONDS = 120
+    TIMEOUT_SECONDS = 300
 
     agent = get_active_agent()
     messages = []
@@ -210,13 +210,6 @@ async def stream_agent_response(
         else:
             yield f"\n\n[Sistem Error]: {str(e)}"
 
-    execution_time = time.perf_counter() - start_time
-
-    # print(
-    #     f"\nTOTAL WAKTU EKSEKUSI: "
-    #     f"{execution_time:.2f} detik"
-    # )
-
 @app.post("/chat")
 async def chat_endpoint(
     message: str = Form(...),
@@ -232,7 +225,16 @@ async def chat_endpoint(
     
     saved_filename = None
 
-    if file and file.filename and file.filename.strip():
+    ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf", ".docx"}
+
+    if file and file.filename:
+        ext = Path(file.filename).suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="File type not allowed"
+            )
+        
         saved_filename = file.filename.strip()
 
         file_path = DATA_DIR / saved_filename
