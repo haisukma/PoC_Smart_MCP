@@ -6,10 +6,12 @@ from pathlib import Path
 import re
 import shutil
 import sys
+import uuid
 import time
+from contextvars import ContextVar
 from agent import get_active_agent, init_agent, shutdown_agent
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status, Request, Response
 from fastapi.responses import StreamingResponse
 from opentelemetry import trace, metrics 
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
@@ -266,12 +268,28 @@ async def stream_agent_response(
             logger.error(f"Sistem Error: {str(e)}")
             yield f"\n\n[Sistem Error]: {str(e)}"
 
+thread_id_var: ContextVar[str] = ContextVar("thread_id_var")
 @app.post("/chat")
 async def chat_endpoint(
+    request: Request,
+    response: Response,
     message: str = Form(...),
-    thread_id: str = Form(...),
     file: UploadFile | None = File(None)
 ):
+
+    thread_id = request.cookies.get("thread_id")
+    if not thread_id:
+        thread_id = f"thread_{uuid.uuid4().hex[:12]}"
+        response.set_cookie(
+            key="thread_id",
+            value=thread_id,
+            httponly=True,
+            samesite="lax",
+            max_age=60 * 60 * 24 * 3
+        )
+
+    thread_id_var.set(thread_id)
+
     if validate_prompt_injection(message):
         logger.error(f"PERINGATAN: Prompt Injection terdeteksi pada input: '{message}'")
         raise HTTPException(
@@ -280,7 +298,6 @@ async def chat_endpoint(
         )
     
     saved_filename = None
-
     ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf", ".docx"}
 
     if file and file.filename:
@@ -292,23 +309,72 @@ async def chat_endpoint(
             )
         
         saved_filename = file.filename.strip()
-
         file_path = DATA_DIR / saved_filename
-
         with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(
-                file.file,
-                buffer
-            )
+            shutil.copyfileobj(file.file,buffer)
+
+    async def safe_stream_wrapper():
+        try:
+            async for chunk in stream_agent_response(
+                user_input=message,
+                thread_id=thread_id,
+                filename=saved_filename
+            ):
+                yield chunk
+        except Exception as e:
+            logger.error(f"Stream Error: {str(e)}")
+            yield f"\n\n[Sistem Error]: {str(e)}"
+    logger.info(f"THREAD ID: {thread_id}")
 
     return StreamingResponse(
-        stream_agent_response(
-            user_input=message,
-            thread_id=thread_id,
-            filename=saved_filename
-        ),
+        safe_stream_wrapper(),
         media_type="text/event-stream"
     )
+
+# @app.post("/chat")
+# async def chat_endpoint(
+#     message: str = Form(...),
+#     thread_id: str = Form(...),
+#     file: UploadFile | None = File(None)
+# ):
+#     if validate_prompt_injection(message):
+#         logger.error(f"PERINGATAN: Prompt Injection terdeteksi pada input: '{message}'")
+#         raise HTTPException(
+#             status_code=status.HTTP_400_BAD_REQUEST,
+#             detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection"
+#         )
+    
+#     saved_filename = None
+
+#     ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf", ".docx"}
+
+#     if file and file.filename:
+#         ext = Path(file.filename).suffix.lower()
+#         if ext not in ALLOWED_EXTENSIONS:
+#             raise HTTPException(
+#                 status_code=status.HTTP_400_BAD_REQUEST,
+#                 detail="File type not allowed"
+#             )
+        
+#         saved_filename = file.filename.strip()
+
+#         file_path = DATA_DIR / saved_filename
+
+#         with open(file_path, "wb") as buffer:
+#             shutil.copyfileobj(
+#                 file.file,
+#                 buffer
+#             )
+
+#     return StreamingResponse(
+#         stream_agent_response(
+#             user_input=message,
+#             thread_id=thread_id,
+#             filename=saved_filename
+#         ),
+#         media_type="text/event-stream"
+#     )
+
 @app.get("/")
 def read_root():
     return {"message": "MCP Server connected to Grafana Cloud!"}
