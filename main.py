@@ -1,22 +1,104 @@
-import time
-import shutil
-from pathlib import Path
 import asyncio
-import re
-import sys
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Form, UploadFile, File, HTTPException, status
-from fastapi.responses import StreamingResponse
 import logging
-from agent import init_agent, shutdown_agent, get_active_agent
+import os
+from pathlib import Path
+import re
+import shutil
+import sys
+import time
+from agent import get_active_agent, init_agent, shutdown_agent
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status
+from fastapi.responses import StreamingResponse
+from opentelemetry import trace, metrics 
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+    OTLPSpanExporter,
+)
+from opentelemetry.instrumentation.fastapi import FastAPIInstrumentor
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.metrics import MeterProvider
+from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 
-@asynccontextmanager
+load_dotenv()
+
+@asynccontextmanager 
 async def lifespan(app: FastAPI):
-    await init_agent()
-    yield
-    await shutdown_agent()
+  await init_agent()
+  yield
+  await shutdown_agent()
+
+# service_name = os.getenv("OTEL_SERVICE_NAME", "mcp-backend")
+# # resource = Resource.create(attributes={"service.name": service_name})
+resource = Resource.create(attributes={
+    "service.name": "mcp-monitoring",
+    # "deployment.environment.name": "development", 
+    # "service.namespace": "default"
+})
+
+# provider = TracerProvider(resource=resource)
+# trace.set_tracer_provider(provider)
+
+otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+raw_headers = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
+
+headers_dict = {}
+if "=" in raw_headers:
+  key, val = raw_headers.split("=", 1)
+  headers_dict[key.strip()] = val.strip()
+
+# otlp_exporter = OTLPSpanExporter(
+#     endpoint=f"{otlp_endpoint}/v1/traces",
+#     headers=headers_dict,
+# )
+# provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+
+# metric_exporter = OTLPMetricExporter(
+#     endpoint=f"{otlp_endpoint}/v1/metrics",
+#     headers=headers_dict,
+# )
+# metric_reader = PeriodicExportingMetricReader(metric_exporter)
+# meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
+# metrics.set_meter_provider(meter_provider)
+
+# app = FastAPI(lifespan=lifespan)
+# FastAPIInstrumentor.instrument_app(app)
+
+trace_provider = TracerProvider(resource=resource)
+trace.set_tracer_provider(trace_provider)
+trace_exporter = OTLPSpanExporter(
+    endpoint=f"{otlp_endpoint}/v1/traces",
+    headers=headers_dict,
+)
+trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
+
+meter_provider = MeterProvider(
+    resource=resource,
+    metric_readers=[
+        PeriodicExportingMetricReader(
+            OTLPMetricExporter(
+                endpoint=f"{otlp_endpoint}/v1/metrics",
+                headers=headers_dict,
+            )
+        )
+    ],
+)
+metrics.set_meter_provider(meter_provider)
 
 app = FastAPI(lifespan=lifespan)
+FastAPIInstrumentor.instrument_app(app)
+
+logger = logging.getLogger("mcp_backend")
+logger.setLevel(logging.INFO)
+
+if not logger.handlers:
+  file_handler = logging.FileHandler("app_monitoring3.log", mode="a")
+  file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+  file_handler.setFormatter(file_formatter)
+  logger.addHandler(file_handler)
 
 DATA_DIR = Path("data_storage")
 DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -66,13 +148,6 @@ INJECTION_PATTERNS = [
 
 COMPILED_INJECTION_REGEX = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    filename="app_monitoring2.log",
-    filemode="a"
-)
-
 def validate_prompt_injection(user_input: str):
     for pattern in COMPILED_INJECTION_REGEX:
         if pattern.search(user_input):
@@ -114,6 +189,7 @@ async def stream_agent_response(
 
     agent = get_active_agent()
     messages = []
+    tool_start_times = {}
 
     if filename:
         messages.append((
@@ -145,89 +221,50 @@ async def stream_agent_response(
             elapsed = time.perf_counter() - start_time
 
             if elapsed > TIMEOUT_SECONDS:
-
-                # print(
-                #     f"\n[PERINGATAN]: Agent timeout "
-                #     f"setelah {TIMEOUT_SECONDS} detik"
-                # )
-                logging.warning(f"PERINGATAN: Agent timeout setelah {TIMEOUT_SECONDS} detik")
-                yield (
-                    f"\n\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu {TIMEOUT_SECONDS} detik")
+                logger.warning(f"PERINGATAN: Agent timeout setelah {TIMEOUT_SECONDS} detik")
+                yield (f"\n\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu {TIMEOUT_SECONDS} detik")
                 break
 
             kind = event["event"]
 
             if kind == "on_chat_model_stream":
                 content = event["data"]["chunk"].content
-
                 if content:
                     yield content
 
             elif kind == "on_tool_start":
                 tool_name = event.get("name") or event.get("data", {}).get("name") or "unknown_tool"
-
                 tool_start_times[tool_name] = time.perf_counter()
 
-                # print(
-                #     f"\n[MCP TOOL DIPANGGIL]: {tool_name}",
-                #     file=sys.stderr
-                # )
-                logging.info(f"[MCP TOOL DIPANGGIL]: {tool_name}")
-
+                logger.info(f"[MCP TOOL DIPANGGIL]: {tool_name}")
                 tool_input = event["data"].get("input", {})
-                print(
-                    f"TOOL INPUT: {tool_input}",
-                    file=sys.stderr
-                )
-                logging.info(f"TOOL INPUT: {tool_input}")
+                logger.info(f"TOOL INPUT: {tool_input}")
 
                 if tool_name in PYTHON_ANALYSIS_TOOLS:
                     code = tool_input.get("code")
                     if code:
-                        print("PYTHON CODE DARI LLM")
-                        print(code, file=sys.stderr)
-                        # logging.info(f"Code LLM: {code}")
+                        logger.info(f"Code LLM: {code}")
 
             elif kind == "on_tool_end":
                 tool_name = event.get("name") or event.get("data", {}).get("name") or "unknown_tool"
                 start_time_tool = tool_start_times.get(tool_name)
                 tool_output = event["data"].get("output", {})
-                # print(
-                #     f"TOOL OUTPUT: {tool_output}",
-                #     file=sys.stderr
-                # )
-                logging.info(f"TOOL OUTPUT: {tool_output}")
+                logger.info(f"TOOL OUTPUT: {tool_output}")
 
                 if start_time_tool:
                     duration =time.perf_counter() - start_time_tool
-                    # print(
-                    #     f"[MCP TOOL SELESAI]: {tool_name} (Durasi: {duration:.2f} detik)",
-                    #     file=sys.stderr
-                    # )
-                    logging.info(f"MCP TOOL SELESAI: {tool_name} (Durasi: {duration:.2f} detik)")
+                    logger.info(f"MCP TOOL SELESAI: {tool_name} (Durasi: {duration:.2f} detik)")
                     del tool_start_times[tool_name]
-
                 else:
-                    print(
-                        f"[MCP TOOL SELESAI]: {tool_name}",
-                        file=sys.stderr
-                    )
-                    # logging.info(f"MCP TOOL SELESAI: {tool_name}")
+                    logger.info(f"MCP TOOL SELESAI: {tool_name}")
 
     except Exception as e:
         if "recursion limit" in str(e).lower():
-            # print(
-            #     "\n[PERINGATAN SISTEM]: Agent dihentikan karena recursion_limit",
-            #     file=sys.stderr
-            # )
-            logging.warning(f"PERINGATAN SISTEM: Agent dihentikan karena recursion limit")
+            logger.warning(f"PERINGATAN SISTEM: Agent dihentikan karena recursion limit")
             yield ("\n\nSistem Memotong Eksekusi Paksa:\nProses analisis data terlalu panjang dan berputar-putar")
-
         else:
+            logger.error(f"Sistem Error: {str(e)}")
             yield f"\n\n[Sistem Error]: {str(e)}"
-
-    log_file = open("app_monitoring.log", "w")
-    sys.stderr = log_file
 
 @app.post("/chat")
 async def chat_endpoint(
@@ -236,8 +273,7 @@ async def chat_endpoint(
     file: UploadFile | None = File(None)
 ):
     if validate_prompt_injection(message):
-        # print(f"\n[PERINGATAN]: Prompt Injection terdeteksi pada input: '{message}'")
-        logging.error(f"PERINGATAN: Prompt Injection terdeteksi pada input: '{message}'")
+        logger.error(f"PERINGATAN: Prompt Injection terdeteksi pada input: '{message}'")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection"
@@ -273,3 +309,6 @@ async def chat_endpoint(
         ),
         media_type="text/event-stream"
     )
+@app.get("/")
+def read_root():
+    return {"message": "MCP Server connected to Grafana Cloud!"}
