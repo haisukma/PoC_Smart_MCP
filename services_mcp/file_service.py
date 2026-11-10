@@ -1,6 +1,5 @@
 from pathlib import Path
 import pandas as pd
-from io import BytesIO
 from pypdf import PdfReader
 
 def get_file_schema(file_path: str) -> str:
@@ -8,6 +7,7 @@ def get_file_schema(file_path: str) -> str:
     Mengambil ringkasan skema file (kolom, tipe data, sampel 3 baris)
     tanpa membaca seluruh isi file
     """
+
     path = Path(file_path)
     suffix = path.suffix.lower()
 
@@ -29,7 +29,6 @@ def get_file_schema(file_path: str) -> str:
     elif suffix == ".pdf":
         try:
             text = ""
-
             reader = PdfReader(file_path)
             for i, page in enumerate(reader.pages[:15]):
                 text += f"Halaman {i+1}\n"

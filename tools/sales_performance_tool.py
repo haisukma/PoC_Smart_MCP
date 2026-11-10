@@ -1,4 +1,3 @@
-import io
 from services_mcp.sales_rag_service import query_sales_rag
 
 def get_sales_performance_metadata() -> dict:
@@ -8,11 +7,9 @@ def get_sales_performance_metadata() -> dict:
     return {
         "tool_name": "search_sales_performance_data",
         "description": (
-            "Gunakan tool ini untuk MENCARI dan MENYARING baris data Sales Performance dari database raksasa. "
-            "Sangat cocok untuk melihat kinerja, target, daerah wilayah, pencapaian, dan nama sales tertentu."
-        ),
-        "columns": ["sales_name", "region", "total_target", "total_achievement", "period"]
-    }
+            "Gunakan tool ini untuk MENCARI dan MENYARING baris data Sales Performance dari database raksasa "
+            "Sangat cocok untuk melihat kinerja, target, daerah wilayah, pencapaian, dan nama sales tertentu"),
+        "columns": ["sales_name", "region", "total_target", "total_achievement", "period"]}
 
 def register_sales_vector_tools(mcp):
 
@@ -31,8 +28,7 @@ def register_sales_vector_tools(mcp):
             return (
                 "Berikut adalah potongan data sales terakurat yang berhasil disaring dari database:\n\n"
                 f"{context_data}\n\n"
-                "Gunakan data di atas sebagai acuan utama untuk menjawab pertanyaan user secara akurat."
-            )
+                "Gunakan data di atas sebagai acuan utama untuk menjawab pertanyaan user secara akurat")
 
         except Exception as e:
             return f"Error saat melakukan pencarian RAG Data: {str(e)}"

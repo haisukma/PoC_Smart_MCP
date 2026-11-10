@@ -1,6 +1,5 @@
 from services_mcp.neutroncabang_service import (
-    scrape_neutron_branches
-)
+    scrape_neutron_branches)
 
 def register_neutron_tools(mcp):
 

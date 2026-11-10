@@ -46,16 +46,14 @@ def register_asset_tools(mcp):
                 "min": min,
                 "max": max,
                 "abs": abs,
-                "round": round
-            }
+                "round": round}
 
             safe_globals = {
                 "__builtins__": safe_builtins,
                 "pd": pd,
                 "np": np,
                 "json": json,
-                "datetime": datetime
-            }
+                "datetime": datetime}
 
             local_vars_asset = {"df": df, "pd": pd}
             output_buffer_asset = io.StringIO()

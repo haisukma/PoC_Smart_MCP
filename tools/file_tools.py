@@ -1,13 +1,8 @@
-import io
 from pathlib import Path
-import io
 from pathlib import Path
-import sys
 import traceback
 import pandas as pd
 import numpy as np
-import json
-import datetime
 from pypdf import PdfReader
 from e2b_code_interpreter import AsyncSandbox
 
@@ -25,6 +20,7 @@ def register_file_tools(mcp):
         - DILARANG dipanggil untuk data API (Sales Performance, Asset, Customer)
         - HANYA dipanggil jika ada argumen `filename` file yang diunggah
         """
+
         filepath = DATA_DIR / filename
         if not filepath.exists():
             return f"Error: File '{filename}' tidak ditemukan di folder data_storage"
@@ -96,26 +92,20 @@ def register_file_tools(mcp):
             return "Error: Nama file tidak valid"
 
         suffix = filepath.suffix.lower()
-
         if suffix == ".pdf":
             return (
                 f"Error: File '{filename}' adalah file PDF "
                 "Fungsi execute_python_analysis hanya untuk file tabular (CSV/Excel) "
-                "Gunakan teks yang sudah didapatkan dari get_file_schema untuk menjawab pertanyaan pengguna"
-            )
+                "Gunakan teks yang sudah didapatkan dari get_file_schema untuk menjawab pertanyaan pengguna")
 
         try:
             sandbox = await AsyncSandbox.create()
-
             try:
-
                 with open(filepath, "rb") as f:
                     file_bytes = f.read()
 
                 await sandbox.files.write(filename, file_bytes)
-
                 execution = await sandbox.run_code(python_code, timeout=30)
-
                 if execution.error:
                     return f"Error saat Eksekusi Kode Python di Sandbox:\n{execution.error.name}: {execution.error.value}\n{execution.error.traceback}"
 

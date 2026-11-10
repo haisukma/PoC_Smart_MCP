@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status, Request, Response
 from fastapi.responses import StreamingResponse
 from opentelemetry import trace, metrics 
+from opentelemetry.trace import Status, StatusCode
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
     OTLPSpanExporter,
 )
@@ -27,55 +28,31 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 
 load_dotenv()
 
-@asynccontextmanager 
-async def lifespan(app: FastAPI):
-  await init_agent()
-  yield
-  await shutdown_agent()
-
-# service_name = os.getenv("OTEL_SERVICE_NAME", "mcp-backend")
-# # resource = Resource.create(attributes={"service.name": service_name})
 resource = Resource.create(attributes={
     "service.name": "mcp-monitoring",
-    # "deployment.environment.name": "development", 
-    # "service.namespace": "default"
+    "deployment.environment.name": "development",
 })
 
-# provider = TracerProvider(resource=resource)
-# trace.set_tracer_provider(provider)
-
-otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
+otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").rstrip("/")
 raw_headers = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
-
 headers_dict = {}
-if "=" in raw_headers:
-  key, val = raw_headers.split("=", 1)
-  headers_dict[key.strip()] = val.strip()
 
-# otlp_exporter = OTLPSpanExporter(
-#     endpoint=f"{otlp_endpoint}/v1/traces",
-#     headers=headers_dict,
-# )
-# provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
+if raw_headers:
+    for item in raw_headers.split(","):
+        if "=" in item:
+            key, val = item.split("=", 1)
+            headers_dict[key.strip()] = val.strip()
 
-# metric_exporter = OTLPMetricExporter(
-#     endpoint=f"{otlp_endpoint}/v1/metrics",
-#     headers=headers_dict,
-# )
-# metric_reader = PeriodicExportingMetricReader(metric_exporter)
-# meter_provider = MeterProvider(resource=resource, metric_readers=[metric_reader])
-# metrics.set_meter_provider(meter_provider)
-
-# app = FastAPI(lifespan=lifespan)
-# FastAPIInstrumentor.instrument_app(app)
+if not otlp_endpoint:
+    raise ValueError("OTEL_EXPORTER_OTLP_ENDPOINT belum dikonfigurasi")
 
 trace_provider = TracerProvider(resource=resource)
 trace.set_tracer_provider(trace_provider)
 trace_exporter = OTLPSpanExporter(
     endpoint=f"{otlp_endpoint}/v1/traces",
-    headers=headers_dict,
-)
-trace_provider.add_span_processor(BatchSpanProcessor(trace_exporter))
+    headers=headers_dict)
+trace_provider.add_span_processor(
+    BatchSpanProcessor(trace_exporter))
 
 meter_provider = MeterProvider(
     resource=resource,
@@ -83,12 +60,38 @@ meter_provider = MeterProvider(
         PeriodicExportingMetricReader(
             OTLPMetricExporter(
                 endpoint=f"{otlp_endpoint}/v1/metrics",
-                headers=headers_dict,
-            )
-        )
-    ],
-)
+                headers=headers_dict))])
 metrics.set_meter_provider(meter_provider)
+
+tracer = trace.get_tracer("mcp-monitoring")
+meter = metrics.get_meter("mcp-monitoring")
+
+tool_calls = meter.create_counter(
+    name="mcp.tool.calls",
+    description="Total MCP tool calls",
+    unit="1")
+
+tool_errors = meter.create_counter(
+    name="mcp.tool.errors",
+    description="Total MCP tool errors",
+    unit="1")
+
+tool_duration = meter.create_histogram(
+    name="mcp.tool.duration",
+    description="MCP tool execution duration",
+    unit="s")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await init_agent()
+    try:
+        yield
+    finally:
+        await shutdown_agent()
+        trace_provider.force_flush()
+        meter_provider.force_flush()
+        trace_provider.shutdown()
+        meter_provider.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 FastAPIInstrumentor.instrument_app(app)
@@ -108,8 +111,7 @@ DATA_DIR.mkdir(parents=True, exist_ok=True)
 PYTHON_ANALYSIS_TOOLS = {
     "execute_asset_python_analysis",
     "execute_customer_analysis",
-    "execute_sales_python_analysis",
-}
+    "execute_sales_python_analysis"}
 
 INJECTION_PATTERNS = [
     r"(?i)ignore\s+(all\s+)?(previous|prior)\s+((?:safety|security|system|operational|internal|core|original|initial|existing|given|stated|provided|defined|specified|established)\s+)?(instructions?|rules?|guidelines?|constraints?|directives?)",
@@ -160,113 +162,195 @@ async def run_agent_with_timeout(
     agent,
     inputs,
     config,
-    timeout_seconds=60
-):
+    timeout_seconds=60):
+
     async def collect_events():
         events = []
 
         async for event in agent.astream_events(
             inputs,
             config=config,
-            version="v2"
-        ):
+            version="v2"):
+
             events.append(event)
 
         return events
 
     return await asyncio.wait_for(
         collect_events(),
-        timeout=timeout_seconds
-    )
-
-tool_start_times = {}
+        timeout=timeout_seconds)
 
 async def stream_agent_response(
     user_input: str,
     thread_id: str,
-    filename: str | None = None
-):
+    filename: str | None = None):
+
     start_time = time.perf_counter()
     TIMEOUT_SECONDS = 300
 
     agent = get_active_agent()
     messages = []
-    tool_start_times = {}
+    tool_runs = {}
 
     if filename:
         messages.append((
             "system",
             f"[INFO SISTEM]: Pengguna mengunggah file '{filename}'.\n"
-            f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"
-        ))
+            f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"))
 
     messages.append(("user", user_input))
 
-    inputs = {
-        "messages": messages
-    }
+    inputs = {"messages": messages}
 
     config = {
-        "configurable": {
-            "thread_id": thread_id,
-        },
-        "recursion_limit": 19
-    }
+        "configurable": {"thread_id": thread_id},
+        "recursion_limit": 19}
 
     try:
         async for event in agent.astream_events(
             inputs,
             config=config,
-            version="v2"
-        ):
+            version="v2"):
 
-            elapsed = time.perf_counter() - start_time
+            event_type = event.get("event")
+            tool_name = event.get("name", "unknown_tool")
+            run_id = str(event.get("run_id", ""))
+            data = event.get("data", {})
 
-            if elapsed > TIMEOUT_SECONDS:
-                logger.warning(f"PERINGATAN: Agent timeout setelah {TIMEOUT_SECONDS} detik")
-                yield (f"\n\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu {TIMEOUT_SECONDS} detik")
-                break
+            if event_type == "on_tool_start":
+                span = tracer.start_span(
+                    name=f"mcp.tool.{tool_name}")
+                span.set_attribute(
+                    "mcp.tool.name", tool_name)
+                span.set_attribute(
+                    "mcp.tool.run_id", run_id)
+                tool_runs[run_id] = {
+                    "span": span,
+                    "start_time": time.perf_counter(),
+                    "tool_name": tool_name}
 
-            kind = event["event"]
+                tool_input = data.get("input", {})
 
-            if kind == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
+            elif event_type == "on_tool_end":
+                run = tool_runs.pop(run_id, None)
+                tool_output = data.get("output", {})
+                logger.info(
+                    f"TOOL OUTPUT: {tool_output}")
+
+                if run:
+                    duration = (time.perf_counter() - run["start_time"])
+                    attributes = {
+                        "mcp.tool.name": run["tool_name"],
+                        "mcp.tool.status": "success"}
+
+                    run["span"].set_attribute(
+                        "mcp.tool.status",
+                        "success")
+
+                    run["span"].end()
+                    tool_calls.add(1, attributes)
+
+                    tool_duration.record(
+                        duration, attributes)
+
+                    logger.info(
+                        f"MCP TOOL SELESAI: "
+                        f"{run['tool_name']} "
+                        f"(Durasi: {duration:.2f} detik)")
+
+            elif event_type == "on_tool_error":
+                run = tool_runs.pop(run_id, None)
+                error = data.get("error")
+
+                if run:
+                    duration = (time.perf_counter() - run["start_time"])
+                    attributes = {
+                        "mcp.tool.name": run["tool_name"],
+                        "mcp.tool.status": "error"}
+
+                    run["span"].set_attribute(
+                        "mcp.tool.status",
+                        "error")
+
+                    if error:
+                        run["span"].set_attribute(
+                            "error.message",
+                            str(error)[:500])
+
+                        if isinstance(error, BaseException):
+                            run["span"].record_exception(error)
+
+                    run["span"].set_status(
+                        Status(StatusCode.ERROR))
+                    run["span"].end()
+
+                    tool_calls.add(1, attributes)
+                    tool_errors.add(1, attributes)
+
+                    tool_duration.record(
+                        duration, attributes)
+
+                    logger.error(
+                        f"MCP TOOL ERROR: "
+                        f"{run['tool_name']} - {error}")
+
+            elif event_type == "on_chat_model_stream":
+                content = data["chunk"].content
                 if content:
                     yield content
 
-            elif kind == "on_tool_start":
-                tool_name = event.get("name") or event.get("data", {}).get("name") or "unknown_tool"
-                tool_start_times[tool_name] = time.perf_counter()
+            elapsed = time.perf_counter() - start_time
+            if elapsed > TIMEOUT_SECONDS:
+                logger.warning(
+                    f"PERINGATAN: Agent timeout "
+                    f"setelah {TIMEOUT_SECONDS} detik")
 
-                logger.info(f"[MCP TOOL DIPANGGIL]: {tool_name}")
-                tool_input = event["data"].get("input", {})
-                logger.info(f"TOOL INPUT: {tool_input}")
+                yield (
+                    f"\n\n[Sistem]: Proses analisis "
+                    f"dihentikan karena melebihi "
+                    f"batas waktu {TIMEOUT_SECONDS} detik")
 
-                if tool_name in PYTHON_ANALYSIS_TOOLS:
-                    code = tool_input.get("code")
-                    if code:
-                        logger.info(f"Code LLM: {code}")
-
-            elif kind == "on_tool_end":
-                tool_name = event.get("name") or event.get("data", {}).get("name") or "unknown_tool"
-                start_time_tool = tool_start_times.get(tool_name)
-                tool_output = event["data"].get("output", {})
-                logger.info(f"TOOL OUTPUT: {tool_output}")
-
-                if start_time_tool:
-                    duration =time.perf_counter() - start_time_tool
-                    logger.info(f"MCP TOOL SELESAI: {tool_name} (Durasi: {duration:.2f} detik)")
-                    del tool_start_times[tool_name]
-                else:
-                    logger.info(f"MCP TOOL SELESAI: {tool_name}")
+                break
 
     except Exception as e:
         if "recursion limit" in str(e).lower():
-            logger.warning(f"PERINGATAN SISTEM: Agent dihentikan karena recursion limit")
-            yield ("\n\nSistem Memotong Eksekusi Paksa:\nProses analisis data terlalu panjang dan berputar-putar")
+            logger.warning(
+                "PERINGATAN SISTEM: Agent dihentikan "
+                "karena recursion limit")
+
+            yield (
+                "\n\nSistem Memotong Eksekusi Paksa:\n"
+                "Proses analisis data terlalu panjang "
+                "dan berputar-putar")
+
         else:
-            logger.error(f"Sistem Error: {str(e)}")
+            logger.error(
+                f"Sistem Error: {str(e)}")
+            
             yield f"\n\n[Sistem Error]: {str(e)}"
+
+    finally:
+        for run_id, run in list(tool_runs.items()):
+            duration = (time.perf_counter() - run["start_time"])
+
+            attributes = {
+                "mcp.tool.name": run["tool_name"],
+                "mcp.tool.status": "interrupted"}
+
+            run["span"].set_attribute(
+                "mcp.tool.status", "interrupted")
+            run["span"].end()
+
+            tool_calls.add(1, attributes)
+            tool_duration.record(
+                duration, attributes)
+
+            logger.warning(
+                f"MCP TOOL INTERRUPTED: "
+                f"{run['tool_name']} "
+                f"(Durasi: {duration:.2f} detik)")
+
+        tool_runs.clear()
 
 thread_id_var: ContextVar[str] = ContextVar("thread_id_var")
 @app.post("/chat")
@@ -274,8 +358,7 @@ async def chat_endpoint(
     request: Request,
     response: Response,
     message: str = Form(...),
-    file: UploadFile | None = File(None)
-):
+    file: UploadFile | None = File(None)):
 
     thread_id = request.cookies.get("thread_id")
     if not thread_id:
@@ -285,8 +368,7 @@ async def chat_endpoint(
             value=thread_id,
             httponly=True,
             samesite="lax",
-            max_age=60 * 60 * 24 * 3
-        )
+            max_age=60 * 60 * 24 * 3)
 
     thread_id_var.set(thread_id)
 
@@ -294,8 +376,7 @@ async def chat_endpoint(
         logger.error(f"PERINGATAN: Prompt Injection terdeteksi pada input: '{message}'")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection"
-        )
+            detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection")
     
     saved_filename = None
     ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf", ".docx"}
@@ -305,8 +386,7 @@ async def chat_endpoint(
         if ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File type not allowed"
-            )
+                detail="File type not allowed")
         
         saved_filename = file.filename.strip()
         file_path = DATA_DIR / saved_filename
@@ -318,8 +398,8 @@ async def chat_endpoint(
             async for chunk in stream_agent_response(
                 user_input=message,
                 thread_id=thread_id,
-                filename=saved_filename
-            ):
+                filename=saved_filename):
+
                 yield chunk
         except Exception as e:
             logger.error(f"Stream Error: {str(e)}")
@@ -328,52 +408,7 @@ async def chat_endpoint(
 
     return StreamingResponse(
         safe_stream_wrapper(),
-        media_type="text/event-stream"
-    )
-
-# @app.post("/chat")
-# async def chat_endpoint(
-#     message: str = Form(...),
-#     thread_id: str = Form(...),
-#     file: UploadFile | None = File(None)
-# ):
-#     if validate_prompt_injection(message):
-#         logger.error(f"PERINGATAN: Prompt Injection terdeteksi pada input: '{message}'")
-#         raise HTTPException(
-#             status_code=status.HTTP_400_BAD_REQUEST,
-#             detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection"
-#         )
-    
-#     saved_filename = None
-
-#     ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf", ".docx"}
-
-#     if file and file.filename:
-#         ext = Path(file.filename).suffix.lower()
-#         if ext not in ALLOWED_EXTENSIONS:
-#             raise HTTPException(
-#                 status_code=status.HTTP_400_BAD_REQUEST,
-#                 detail="File type not allowed"
-#             )
-        
-#         saved_filename = file.filename.strip()
-
-#         file_path = DATA_DIR / saved_filename
-
-#         with open(file_path, "wb") as buffer:
-#             shutil.copyfileobj(
-#                 file.file,
-#                 buffer
-#             )
-
-#     return StreamingResponse(
-#         stream_agent_response(
-#             user_input=message,
-#             thread_id=thread_id,
-#             filename=saved_filename
-#         ),
-#         media_type="text/event-stream"
-#     )
+        media_type="text/event-stream")
 
 @app.get("/")
 def read_root():

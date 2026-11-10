@@ -9,9 +9,7 @@ from tools.websearch_tool import register_web_search_tools
 # from tools.database_tool import register_database_tools
 # from tools.sales_performance_tool import register_sales_vector_tools
 
-mcp = FastMCP(
-    "Multi Data MCP Server"
-)
+mcp = FastMCP("Multi Data MCP Server")
 
 register_asset_tools(mcp)
 register_customer_tools(mcp)

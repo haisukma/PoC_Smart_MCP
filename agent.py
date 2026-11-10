@@ -14,8 +14,7 @@ load_dotenv()
 
 server_params = StdioServerParameters(
     command="python",
-    args=["server.py"]
-)
+    args=["server.py"])
 
 agent_executor = None
 mcp_session = None
@@ -84,8 +83,7 @@ async def init_agent():
         temperature=0.1,
         # max_tokens=2000,
         api_key=os.getenv("OPEN_ROUTER_KEY1"),
-        base_url="https://openrouter.ai/api/v1",
-    )
+        base_url="https://openrouter.ai/api/v1")
 
     # llm = ChatOllama(
     #     model="qwen2.5:7b",
@@ -93,15 +91,11 @@ async def init_agent():
     # )
 
     checkpointer = InMemorySaver()
-
     agent_executor = create_react_agent(
         model=llm,
         tools=mcp_tools,
         prompt=SystemMessage(content=SYSTEM_PROMPT),
-        checkpointer=checkpointer
-    )
-
-    # print("Agent & Persistent MCP Server Ready!")
+        checkpointer=checkpointer)
 
 async def shutdown_agent():
     global mcp_session, mcp_context
@@ -109,7 +103,6 @@ async def shutdown_agent():
         await mcp_session.__aexit__(None, None, None)
     if mcp_context:
         await mcp_context.__aexit__(None, None, None)
-    # print("MCP Connection Closed Cleanly")
 
 def get_active_agent():
     """Helper function agar memanggil instance agent_executor yang sudah terisi"""

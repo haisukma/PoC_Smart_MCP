@@ -1,7 +1,6 @@
 from services_mcp.database_service import (
     get_database_schema,
-    execute_read_query
-)
+    execute_read_query)
 
 def register_database_tools(mcp):
 
@@ -38,18 +37,14 @@ def register_database_tools(mcp):
         """
 
         try:
-
             results = execute_read_query(query)
 
             return {
                 "success": True,
                 "row_count": len(results),
-                "data": results
-            }
+                "data": results}
 
         except Exception as e:
-
             return {
                 "success": False,
-                "error": str(e)
-            }
+                "error": str(e)}
