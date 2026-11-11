@@ -94,7 +94,14 @@ def register_grafik_tools(mcp):
                 raise ValueError("Format hanya mendukung CSV dan Excel")
 
             OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-            output_path = OUTPUT_DIR / f"{filepath.stem}_chart.png"
+            counter = 1
+            while True:
+                output_path = OUTPUT_DIR / f"{filepath.stem}_chart_{counter}.png"
+                if not output_path.exists():
+                    break
+
+                counter += 1
+
             sandbox = await AsyncSandbox.create()
             try:
                 with open(filepath, "rb") as f:
