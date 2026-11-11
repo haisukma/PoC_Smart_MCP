@@ -6,4 +6,6 @@ data_storage/
 app_monitoring.log
 app_monitoring2.log
 app_monitoring3.log
+mcp-server-monitoring-grafana.json
+output_grafik/
 __pycache__/

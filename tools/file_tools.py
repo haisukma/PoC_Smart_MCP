@@ -1,5 +1,4 @@
 from pathlib import Path
-from pathlib import Path
 import traceback
 import pandas as pd
 import numpy as np
@@ -13,7 +12,7 @@ def register_file_tools(mcp):
     @mcp.tool()
     async def get_file_schema(filename: str) -> str:
         """
-        Mengambil skema file (kolom & sampel data untuk CSV/Excel)
+        Mengambil skema file (kolom dan sampel data untuk CSV/Excel)
         Gunakan tool ini PERTAMA KALI saat pengguna mengunggah file CSV/Excel
 
         PERINGATAN STRICT:
@@ -38,23 +37,21 @@ def register_file_tools(mcp):
             elif suffix == ".pdf":
                 reader = PdfReader(filepath)
                 text = f"File Name: {filename} (Dokumen PDF)\nTotal Halaman: {len(reader.pages)}\n\nIsi Teks Dokumen\n"
-
                 for i, page in enumerate(reader.pages[:15]):
                     text += f"\n[Halaman {i+1}]\n" + (page.extract_text() or "")
                 
                 return text if text.strip() else "File PDF berhasil dibaca, tetapi tidak ada teks yang terekstrak"
-
             else:
                 return f"Error: Format file '{suffix}' belum didukung"
 
             output = []
             output.append(f"File Name: {filename}")
             output.append(f"Estimasi Total Baris: {total_rows}, Total Kolom: {len(df_sample.columns)}")
-            output.append("\nDaftar Nama Kolom & Tipe Data:")
+            output.append("\nDaftar Nama Kolom dan Tipe Data:")
             for col, dtype in df_sample.dtypes.items():
                 output.append(f"- '{col}' ({dtype})")
 
-            output.append("\nSample Data (5 baris pertama):")
+            output.append("\nSample Data:")
             output.append(df_sample.to_string(index=False))
 
             return "\n".join(output)
@@ -86,7 +83,7 @@ def register_file_tools(mcp):
                 return "Error: Akses file ditolak"
 
             if not filepath.exists():
-                return f"Error: FIle '{filename}' tidak ditemukan"
+                return f"Error: File '{filename}' tidak ditemukan"
 
         except Exception:
             return "Error: Nama file tidak valid"
