@@ -6,7 +6,7 @@ from tools.salesperformance_tool import register_sales_performance_tools
 from tools.ruleperformance_tool import register_rule_performance_tools
 from tools.file_tools import register_file_tools
 from tools.generate_grafik import register_grafik_tools
-# from tools.websearch_tool import register_web_search_tools
+from tools.websearch_tool import register_web_search_tools
 
 mcp = FastMCP("Multi Data MCP Server")
 
@@ -16,7 +16,7 @@ register_customer_tools(mcp)
 register_sales_performance_tools(mcp)
 register_rule_performance_tools(mcp)
 register_file_tools(mcp)
-# register_web_search_tools(mcp)
+register_web_search_tools(mcp)
 register_grafik_tools(mcp)
 
 if __name__ == "__main__":

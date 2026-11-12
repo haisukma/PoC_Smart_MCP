@@ -9,6 +9,9 @@ from langchain_core.messages import SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from dotenv import load_dotenv
 import os
+import math
+import asyncio
+from langchain_core.messages import HumanMessage, AIMessage
 
 load_dotenv()
 
@@ -24,7 +27,7 @@ checkpointer = None
 SYSTEM_PROMPT = """
 <system_instructions>
 <role>
-Kamu adalah Analyst Agent yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam BAHASA INDONESIA.
+Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam BAHASA INDONESIA.
 </role>
 
 <security_guardrails>
@@ -75,7 +78,7 @@ async def init_agent():
         # model="stealth/ox-alpha",
         temperature=0.1,
         # max_tokens=2000,
-        api_key=os.getenv("OPEN_ROUTER_KEY"),
+        api_key=os.getenv("OPEN_ROUTER_KEY1"),
         base_url="https://openrouter.ai/api/v1")
 
     # llm = ChatOllama(

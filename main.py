@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 import re
 import shutil
-import sys
+import math
 import uuid
 import time
 from contextvars import ContextVar
@@ -26,13 +26,13 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from guardrails.topic_classifier import check_topic
 
 load_dotenv()
 
 resource = Resource.create(attributes={
     "service.name": "mcp-monitoring",
-    "deployment.environment.name": "development",
-})
+    "deployment.environment.name": "development"})
 
 otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "").rstrip("/")
 raw_headers = os.getenv("OTEL_EXPORTER_OTLP_HEADERS", "")
@@ -175,7 +175,6 @@ async def run_agent_with_timeout(
 
     async def collect_events():
         events = []
-
         async for event in agent.astream_events(
             inputs,
             config=config,
@@ -197,6 +196,30 @@ async def stream_agent_response(
     start_time = time.perf_counter()
     TIMEOUT_SECONDS = 300
 
+    try:
+        probability = await asyncio.to_thread(check_topic, user_input)
+
+        if(
+            isinstance(probability, bool)
+            or not isinstance(probability, (int, float))
+            or not math.isfinite(probability)
+            or not 0 <= probability <= 1):
+
+            raise ValueError("Invalid topic probability")
+        logger.info(f"Topic probability: {probability:.4f}")
+
+    except Exception as e:
+        logger.error(f"Topic Control Error: {e}")
+        yield("Maaf, pemeriksaan topik sedang mengalami gangguan")
+
+        return
+
+    if probability < 0.50:
+        logger.info("Permintaan ditolak karena diluar topik")
+        yield("Maaf saya hanya dapat membantu pertanyaan seputar Transmisi Tower Listrik")
+        
+        return
+        
     agent = get_active_agent()
     messages = []
     tool_runs = {}
@@ -208,9 +231,7 @@ async def stream_agent_response(
             f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"))
 
     messages.append(("user", user_input))
-
     inputs = {"messages": messages}
-
     config = {
         "configurable": {"thread_id": thread_id},
         "recursion_limit": 19}
@@ -225,7 +246,6 @@ async def stream_agent_response(
             tool_name = event.get("name", "unknown_tool")
             run_id = str(event.get("run_id", ""))
             data = event.get("data", {})
-
             if event_type == "on_tool_start":
                 span = tracer.start_span(
                     name=f"mcp.tool.{tool_name}")
@@ -273,7 +293,6 @@ async def stream_agent_response(
 
                     run["span"].end()
                     tool_calls.add(1, attributes)
-
                     tool_duration.record(
                         duration, attributes)
 
@@ -285,7 +304,6 @@ async def stream_agent_response(
             elif event_type == "on_tool_error":
                 run = tool_runs.pop(run_id, None)
                 error = data.get("error")
-
                 if run:
                     duration = (time.perf_counter() - run["start_time"])
                     attributes = {
@@ -307,10 +325,8 @@ async def stream_agent_response(
                     run["span"].set_status(
                         Status(StatusCode.ERROR))
                     run["span"].end()
-
                     tool_calls.add(1, attributes)
                     tool_errors.add(1, attributes)
-
                     tool_duration.record(
                         duration, attributes)
 
@@ -341,7 +357,7 @@ async def stream_agent_response(
             logger.warning(
                 "PERINGATAN SISTEM: Agent dihentikan "
                 "karena recursion limit")
-
+            
             yield (
                 "\n\nSistem Memotong Eksekusi Paksa:\n"
                 "Proses analisis data terlalu panjang "
