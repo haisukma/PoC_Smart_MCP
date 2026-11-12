@@ -12,6 +12,7 @@ from contextvars import ContextVar
 from agent import get_active_agent, init_agent, shutdown_agent
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status, Request, Response
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
 from opentelemetry import trace, metrics 
 from opentelemetry.trace import Status, StatusCode
@@ -95,6 +96,14 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 FastAPIInstrumentor.instrument_app(app)
+
+OUTPUT_DIR = Path("output_grafik")
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+app.mount(
+    "/output",
+    StaticFiles(directory=str(OUTPUT_DIR)),
+    name="output")
 
 logger = logging.getLogger("mcp_backend")
 logger.setLevel(logging.INFO)
@@ -230,12 +239,27 @@ async def stream_agent_response(
                     "tool_name": tool_name}
 
                 tool_input = data.get("input", {})
+                logger.info(f"TOOL INPUT: {tool_input}")
 
             elif event_type == "on_tool_end":
                 run = tool_runs.pop(run_id, None)
                 tool_output = data.get("output", {})
-                logger.info(
-                    f"TOOL OUTPUT: {tool_output}")
+                logger.info(f"TOOL OUTPUT: {tool_output}")
+
+                def extract_tool_text(output):
+                    content = getattr(output, "content", output)
+
+                    if isinstance(content, str):
+                        return content
+
+                    if isinstance(content, list):
+                        return "\n".join(
+                            item.get("text", "")
+                            for item in content
+                            if isinstance(item, dict)
+                            and item.get("type") == "text")
+
+                    return ""
 
                 if run:
                     duration = (time.perf_counter() - run["start_time"])

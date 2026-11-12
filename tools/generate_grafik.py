@@ -116,14 +116,21 @@ def register_grafik_tools(mcp):
                         f"{execution.error.value}\n"
                         f"{execution.error.traceback}")
 
-                image_bytes = await sandbox.files.read("chart.png", format="bytes")
+                try:
+                    image_bytes = await sandbox.files.read("chart.png", format="bytes")
+                except FileNotFoundError:
+                    raise RuntimeError(
+                        "Grafik tidak ditemukan. Pastikan menyimpan hasil grafik menggunakan plt.savefig('chart.png')")
+                
                 if not image_bytes:
                     raise ValueError("Grafik PNG tidak berhasil dibuat")
 
                 with open(output_path, "wb") as f:
                     f.write(image_bytes)
 
-                return MCPImage(data=image_bytes, format="png")
+                # return MCPImage(data=image_bytes, format="png")
+                return {
+                    "file": f"{output_path.name}"}
 
             finally:
                 await sandbox.kill()
