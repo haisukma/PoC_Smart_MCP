@@ -26,6 +26,7 @@ def register_asset_tools(mcp):
             code: Kode Python yang akan dieksekusi. WAJIB menggunakan print(...) untuk melihat output!
                   Contoh: print(df[df['region'].str.lower() == 'bandung'])
         """
+        
         try:
             df = await _get_cached_asset_df()
             if df.empty:

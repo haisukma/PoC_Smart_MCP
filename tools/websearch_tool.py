@@ -7,6 +7,7 @@ def register_web_search_tools(mcp):
         query: str,
         max_results: int = 5,
     ) -> str:
+        
         """
         Mencari informasi dari internet
 
@@ -37,25 +38,17 @@ def register_web_search_tools(mcp):
         try:
             results = await search_web(
                 query=query,
-                max_results=max_results,
-            )
+                max_results=max_results)
 
             if not results:
                 return f"Tidak ditemukan hasil untuk query: {query}"
 
             output = []
-
             for i, result in enumerate(results, start=1):
                 title = result.get("title", "")
                 url = result.get("url", "")
                 content = result.get("content", "")
-
-                output.append(
-                    f"""RESULT {i}
-                    Title: {title}
-                    URL: {url}
-                    Content: {content}"""
-                )
+                output.append(f"""RESULT {i}, Title: {title}, URL: {url}, Content: {content}""")
 
             return "\n\n".join(output)
 

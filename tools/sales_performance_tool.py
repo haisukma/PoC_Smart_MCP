@@ -16,11 +16,11 @@ def register_sales_vector_tools(mcp):
     @mcp.tool()
     async def search_sales_performance_data(query: str) -> str:
         """
-        Gunakan tool ini untuk melakukan pencarian data performa sales secara spesifik dari database jutaan baris.
+        Gunakan tool ini untuk melakukan pencarian data performa sales secara spesifik dari database jutaan baris
         Masukkan kata kunci pencarian yang jelas seperti nama sales atau region daerah.
 
         Args:
-            query: Kata kunci pencarian spesifik (Contoh: 'Sales region Bandung' atau 'Pencapaian Andi').
+            query: Kata kunci pencarian spesifik (Contoh: 'Sales region Bandung' atau 'Pencapaian Andi')
         """
         try:
             context_data = query_sales_rag(user_query=query, k=10)
