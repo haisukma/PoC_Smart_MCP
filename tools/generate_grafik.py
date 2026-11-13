@@ -17,8 +17,7 @@ def register_grafik_tools(mcp):
         Menjalankan kode Python buatan AI untuk membuat grafik PNG
 
         CATATAN PENTING UNTUK LLM:
-        - HANYA untuk permintaan grafik atau visualisasi
-        - Panggil get_file_schema terlebih dahulu
+        - HANYA untuk permintaan GRAFIK atau VISUALISASI
         - Gunakan Pandas untuk membaca dan mengolah data
         - Gunakan Matplotlib dan Seaborn untuk membuat grafik
         - Simpan hasil grafik menggunakan:

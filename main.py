@@ -23,7 +23,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from guardrails.topic_classifier import check_topic
+from guardrails.topic_classifier import check_topic, extract_file_content
 
 load_dotenv()
 
@@ -381,6 +381,7 @@ async def chat_endpoint(
     message: str = Form(...),
     file: UploadFile | None = File(None)
 ):
+
     thread_id = request.cookies.get("thread_id")
     is_new_thread = False
 
@@ -394,9 +395,49 @@ async def chat_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection")
 
-    try:
-        topic_probability = await asyncio.to_thread(check_topic, message)
+    file_bytes = None
+    file_content = ""
+    saved_filename = None
+    ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf", ".docx"}
+    MAX_FILE_SIZE = 20 * 1024 * 1024
+    MAX_CONTENT_LENGTH = 15000
+    if file and file.filename:
+        try:
+            original_filename = Path(
+                file.filename.replace("\\", "/")
+            ).name.strip()
 
+            ext = Path(original_filename).suffix.lower()
+            if ext not in ALLOWED_EXTENSIONS:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Format file tidak didukung")
+
+            file_bytes = await file.read(MAX_FILE_SIZE + 1)
+            if len(file_bytes) > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=413,
+                    detail="Ukuran file maksimal 20 MB")
+
+            try:
+                file_content = extract_file_content(file_bytes, original_filename)
+                file_content =  file_content[:MAX_CONTENT_LENGTH]
+
+            except Exception:
+                logger.exception("Gagal mengekestrak isi file")
+                raise HTTPException(
+                    status_code=422,
+                    detail="Isi file tidak dapat dibaca atau format file tidak valid")
+        finally:
+            await file.close()
+
+    topic_input = f"""
+        USER_MESSAGE: {message}
+        FILE CONTENT: {file_content}
+    """
+
+    try:
+        topic_probability = await asyncio.to_thread(check_topic, topic_input)
         if (
             isinstance(topic_probability, bool)
             or not isinstance(topic_probability, (int, float))
@@ -411,38 +452,14 @@ async def chat_endpoint(
             status_code=503,
             detail="Pemeriksaan topik sedang mengalami gangguan")
 
-    saved_filename = None
-    ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf", ".docx"}
-
-    if topic_probability >= 0.50 and file and file.filename:
-        original_filename = Path(
-            file.filename.replace("\\", "/")
-        ).name.strip()
-
-        ext = Path(original_filename).suffix.lower()
-        if ext not in ALLOWED_EXTENSIONS:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="File type not allowed")
-
+    if topic_probability >= 0.50 and file_bytes is not None:
         saved_filename = (f"{uuid.uuid4().hex}_{original_filename}")
-
         file_path = DATA_DIR / saved_filename
-        try:
-            with open(file_path, "wb") as buffer:
-                while chunk := await file.read(1024 * 1024):
-                    buffer.write(chunk)
-        except Exception:
-            logger.exception("Gagal menyimpan file")
-            raise HTTPException(
-                status_code=500,
-                detail="Gagal menyimpan file")
-        finally:
-            await file.close()
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_bytes)
 
     async def safe_stream_wrapper():
         token = thread_id_var.set(thread_id)
-
         try:
             async for chunk in stream_agent_response(
                 user_input=message,

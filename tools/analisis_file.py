@@ -12,7 +12,7 @@ def register_analisis_file(mcp):
     @mcp.tool()
     async def execute_python_analysis(filename: str, python_code: str) -> str:
         """
-        Menjalankan kode Python Pandas untuk menganalisis data CSV atau Excel
+        Menjalankan kode Python Pandas untuk MENGANALISIS DATA CSV atau Excel
 
         CATATAN PENTING UNTUK LLM:
         - Tool ini HANYA untuk file CSV/Excel! DILARANG digunakan untuk file PDF

@@ -1,11 +1,72 @@
 import os
 import requests
+from pathlib import Path
+import pandas as pd
+from pypdf import PdfReader
 from dotenv import load_dotenv
+from docx import Document
+from io import BytesIO
 
 load_dotenv()
 
 API_URL = "https://openrouter.ai/api/alpha/decisions"
 MODEL = "respan/span-01-lite"
+
+def extract_file_content(file_bytes: bytes, filename: str) -> str:
+    ext = Path(filename).suffix.lower()
+
+    try:
+        if ext in [".csv", ".xlsx", ".xls"]:
+            if ext == ".csv":
+                df = pd.read_csv(BytesIO(file_bytes), nrows=10)
+                return (
+                    f"File type: CSV\n"
+                    f"Columns: {list(df.columns)}\n"
+                    f"Sample data:\n{df.to_string(index=False)}")
+
+            excel = pd.ExcelFile(BytesIO(file_bytes))
+            content = []
+
+            for sheet in excel.sheet_names[:5]:
+                df = pd.read_excel(
+                    excel,
+                    sheet_name=sheet,
+                    nrows=10)
+
+                content.append(
+                    f"Sheet: {sheet}\n"
+                    f"Columns: {list(df.columns)}\n"
+                    f"Sample data:\n{df.to_string(index=False)}")
+
+            return "\n\n".join(content)
+
+        elif ext == ".pdf":
+            reader = PdfReader(BytesIO(file_bytes))
+            content = []
+
+            for page in reader.pages[:5]:
+                text = page.extract_text()
+                if text:
+                    content.append(text)
+
+            return "\n".join(content)
+
+        elif ext == ".docx":
+            document = Document(BytesIO(file_bytes))
+
+            paragraphs = [
+                paragraph.text
+                for paragraph in document.paragraphs
+                if paragraph.text.strip()]
+
+            return "\n".join(paragraphs)
+
+        else:
+            raise ValueError("Format file tidak didukung")
+
+    except Exception as e:
+        raise ValueError(
+            f"Gagal membaca isi file: {str(e)}")
 
 def check_topic(user_message: str) -> float:
     api_key = os.getenv("OPEN_ROUTER_KEY")
@@ -21,7 +82,7 @@ def check_topic(user_message: str) -> float:
                 "type": "noul",
                 "instructions": """
                     Tugas:
-                    Tentukan apakah pesan pengguna berkaitan dengan
+                    Tentukan apakah pesan dan file yang diinputkan pengguna berkaitan dengan
                     bidang TRANSMISI TENAGA LISTRIK.
 
                     CAKUPAN TOPIK YANG DIIZINKAN:
@@ -71,18 +132,18 @@ def check_topic(user_message: str) -> float:
                     eksplisit selama konteksnya masih berkaitan
                     dengan cakupan transmisi tenaga listrik
 
-                    Pertanyaan yang sama sekali tidak berkaitan dengan
+                    Pertanyaan dan file yang sama sekali tidak berkaitan dengan
                     cakupan tersebut termasuk OFF-TOPIC
                 """,
                 "criteria": {
                     "true": """
-                        Pesan membahas aset/item, operasional, inspeksi,
+                        Pesan dan file membahas aset/item, operasional, inspeksi,
                         pemeliharaan, kondisi, atau pengolahan dan
                         analisis data yang berkaitan dengan transmisi
                         tenaga listrik
                     """,
                     "false": """
-                        Pesan tidak memiliki hubungan dengan aset/item,
+                        Pesan dan file tidak memiliki hubungan dengan aset/item,
                         operasional, kegiatan, atau data transmisi
                         tenaga listrik
                     """
