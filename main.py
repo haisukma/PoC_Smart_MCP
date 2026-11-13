@@ -471,7 +471,7 @@ async def chat_endpoint(
 
         except Exception:
             logger.exception("Stream Error")
-            yield "\n\n[Sistem Error]: Terjadi kesalahan saat memproses permintaan."
+            yield "\n\n[Sistem Error]: Terjadi kesalahan saat memproses permintaan"
 
         finally:
             thread_id_var.reset(token)
@@ -491,6 +491,64 @@ async def chat_endpoint(
     logger.info(f"THREAD ID: {thread_id}")
 
     return streaming_response
+
+# @app.get("/resume-halaman")
+# async def resume_halaman(
+#     request: Request,
+#     message: str = Form(...)
+# ):
+#     thread_id = request.cookies.get("thread_id")
+#     is_new_thread = False
+
+#     if not thread_id:
+#         thread_id = f"thread_{uuid.uuid4().hex}"
+#         is_new_thread = True
+
+#     if validate_prompt_injection(message):
+#         logger.error("Prompt injection terdeteksi")
+#         raise HTTPException(
+#             status_cod=status.HTTP_400_BAD_REQUEST,
+#             detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection")
+
+#     topic_input = f"""
+#         USER_MESSAGE: {message}
+#     """
+
+#     try:
+#         topic_probability = await asyncio.to_thread(check_topic,topic_input)
+#         if (
+#             isinstance(topic_probability, bool)
+#             or not isinstance(topic_probability, (int, float))
+#             or not math.isfinite(topic_probability)
+#             or not 0 <= topic_probability <= 1
+#         ):
+#             raise ValueError("Invalid topic probability")
+
+#     except Exception:
+#         logger.exception("Topic Control Error")
+#         raise HTTPException(
+#             status_code=503,
+#             detail="Pemeriksaan topik sedang mengalami gangguan")
+
+#     if topic_probability >= 0.50:
+#         return
+
+#     async def safe_stream_wrapper():
+#         token = thread_id_var.set(thread_id)
+#         try:
+#             async for chunk in stream_agent_response(
+#                 user_input=message,
+#                 thread_id=thread_id,
+#                 topic_probability=topic_probability
+#             ):
+#                 yield chunk
+
+#         except Exception:
+#             logger.exception("Stream Error")
+#             yield "\n\n[Sistem Error]: Terjadi kesalahan saat memproses permintaan"
+
+#         finally:
+#             thread_id_var.reset(token)
 
 @app.get("/")
 def read_root():
