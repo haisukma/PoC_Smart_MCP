@@ -27,7 +27,7 @@ def check_topic(user_message: str) -> float:
                     CAKUPAN TOPIK YANG DIIZINKAN:
 
                     1. ASET TRANSMISI:
-                    - Tower transmisi listrik
+                    - Item Tower transmisi listrik, seperti Arching Horn, Isolator, Spacer, dll
                     - SUTT dan SUTET
                     - Penghantar dan jalur transmisi
                     - Gardu Induk
@@ -36,15 +36,15 @@ def check_topic(user_message: str) -> float:
                     - Identitas jalur atau nama penghantar, termasuk nama lokasi
 
                     2. KEGIATAN OPERASIONAL:
-                    - Inspeksi dan pemeriksaan aset
-                    - Thermovisi dan kondisi isolator
-                    - Tindak lanjut hasil inspeksi
-                    - Validasi dan approval
-                    - Assessment kondisi aset
+                    - Inspeksi alat dan lokasi
+                    - Thermovisi dan pengukuran pentanahan
+                    - Pemeliharaan SKTT dan SKLT
+                    - Validasi inspeksi alat, lokasi, dan menggunakan drone
+                    - Assessment kondisi alat dan lokasi
                     - Identifikasi anomali
                     - Kerawanan layang-layang
                     - Proteksi petir
-                    - Pemeliharaan transmisi
+                    - Penjadwalan inspeksi
 
                     3. PENGOLAHAN DAN ANALISIS DATA:
                     - Membaca dan menganalisis file inspeksi
@@ -76,13 +76,13 @@ def check_topic(user_message: str) -> float:
                 """,
                 "criteria": {
                     "true": """
-                        Pesan membahas aset, operasional, inspeksi,
+                        Pesan membahas aset/item, operasional, inspeksi,
                         pemeliharaan, kondisi, atau pengolahan dan
                         analisis data yang berkaitan dengan transmisi
                         tenaga listrik
                     """,
                     "false": """
-                        Pesan tidak memiliki hubungan dengan aset,
+                        Pesan tidak memiliki hubungan dengan aset/item,
                         operasional, kegiatan, atau data transmisi
                         tenaga listrik
                     """

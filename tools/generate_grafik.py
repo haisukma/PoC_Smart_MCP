@@ -12,68 +12,13 @@ OUTPUT_DIR = Path("output_grafik")
 def register_grafik_tools(mcp):
 
     @mcp.tool()
-    async def get_file_grafik(filename: str) -> str:
-        """
-        Membaca schema dan sampel data CSV/Excel sebelum membuat grafik
-
-        Gunakan tool ini PERTAMA KALI ketika pengguna meminta grafik
-        atau visualisasi dari file CSV/Excel
-
-        Tool ini hanya membaca data, tidak membuat grafik
-        """
-
-        try:
-            base_dir = DATA_DIR.resolve()
-            filepath = (base_dir / filename).resolve()
-            if not filepath.is_relative_to(base_dir):
-                return "Error: Akses file di luar data_storage tidak diizinkan"
-
-            if not filepath.exists():
-                return f"Error: File '{filename}' tidak ditemukan"
-
-            suffix = filepath.suffix.lower()
-            if suffix == ".csv":
-                df_grafik = pd.read_csv(filepath, nrows=5, low_memory=False)
-                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                    total_rows = sum(1 for _ in f) - 1
-
-            elif suffix in [".xlsx", ".xls"]:
-                df_grafik = pd.read_excel(filepath, nrows=5)
-                total_rows = "Banyak (Excel File)"
-
-            else:
-                return "Error: Format hanya mendukung CSV dan Excel"
-
-            if df_grafik.empty:
-                return "Error: Dataset kosong"
-
-            output = []
-            output.append(f"File Name: {filename}")
-            output.append(
-                f"Total Baris: {total_rows}, "
-                f"Total Kolom: {len(df_grafik.columns)}")
-
-            output.append("\nDaftar Nama Kolom dan Tipe Data:")
-            for col, dtype in df_grafik.dtypes.items():
-                output.append(f"- '{col}' ({dtype})")
-
-            output.append("\nSample Data:")
-            output.append(df_grafik.to_string(index=False))
-
-            return "\n".join(output)
-
-        except Exception as e:
-            return f"Error membaca schema: {str(e)}"
-
-
-    @mcp.tool()
     async def create_grafik(filename: str, python_code: str) -> MCPImage:
         """
         Menjalankan kode Python buatan AI untuk membuat grafik PNG
 
         CATATAN PENTING UNTUK LLM:
         - HANYA untuk permintaan grafik atau visualisasi
-        - Panggil get_file_grafik terlebih dahulu
+        - Panggil get_file_schema terlebih dahulu
         - Gunakan Pandas untuk membaca dan mengolah data
         - Gunakan Matplotlib dan Seaborn untuk membuat grafik
         - Simpan hasil grafik menggunakan:
@@ -128,7 +73,6 @@ def register_grafik_tools(mcp):
                 with open(output_path, "wb") as f:
                     f.write(image_bytes)
 
-                # return MCPImage(data=image_bytes, format="png")
                 return {
                     "file": f"{output_path.name}"}
 

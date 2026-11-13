@@ -7,57 +7,7 @@ from e2b_code_interpreter import AsyncSandbox
 
 DATA_DIR = Path("data_storage")
 
-def register_file_tools(mcp):
-
-    @mcp.tool()
-    async def get_file_schema(filename: str) -> str:
-        """
-        Mengambil skema file (kolom dan sampel data untuk CSV/Excel)
-        Gunakan tool ini PERTAMA KALI saat pengguna mengunggah file CSV/Excel
-
-        PERINGATAN STRICT:
-        - DILARANG dipanggil untuk data API (Sales Performance, Asset, Customer)
-        - HANYA dipanggil jika ada argumen `filename` file yang diunggah
-        """
-
-        filepath = DATA_DIR / filename
-        if not filepath.exists():
-            return f"Error: File '{filename}' tidak ditemukan di folder data_storage"
-
-        suffix = filepath.suffix.lower()
-        try:
-            if suffix == ".csv":
-                df_sample = pd.read_csv(filepath, nrows=5, low_memory=False)
-                with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
-                    total_rows = sum(1 for _ in f) - 1
-            elif suffix in [".xlsx", ".xls"]:
-                df_sample = pd.read_excel(filepath, nrows=5)
-                total_rows = "Banyak (Excel File)"
-
-            elif suffix == ".pdf":
-                reader = PdfReader(filepath)
-                text = f"File Name: {filename} (Dokumen PDF)\nTotal Halaman: {len(reader.pages)}\n\nIsi Teks Dokumen\n"
-                for i, page in enumerate(reader.pages[:15]):
-                    text += f"\n[Halaman {i+1}]\n" + (page.extract_text() or "")
-                
-                return text if text.strip() else "File PDF berhasil dibaca, tetapi tidak ada teks yang terekstrak"
-            else:
-                return f"Error: Format file '{suffix}' belum didukung"
-
-            output = []
-            output.append(f"File Name: {filename}")
-            output.append(f"Estimasi Total Baris: {total_rows}, Total Kolom: {len(df_sample.columns)}")
-            output.append("\nDaftar Nama Kolom dan Tipe Data:")
-            for col, dtype in df_sample.dtypes.items():
-                output.append(f"- '{col}' ({dtype})")
-
-            output.append("\nSample Data:")
-            output.append(df_sample.to_string(index=False))
-
-            return "\n".join(output)
-
-        except Exception as e:
-            return f"Error saat membaca skema/isi file: {str(e)}"
+def register_analisis_file(mcp):
 
     @mcp.tool()
     async def execute_python_analysis(filename: str, python_code: str) -> str:
@@ -102,7 +52,7 @@ def register_file_tools(mcp):
                     file_bytes = f.read()
 
                 await sandbox.files.write(filename, file_bytes)
-                execution = await sandbox.run_code(python_code, timeout=30)
+                execution = await sandbox.run_code(python_code, timeout=60)
                 if execution.error:
                     return f"Error saat Eksekusi Kode Python di Sandbox:\n{execution.error.name}: {execution.error.value}\n{execution.error.traceback}"
 

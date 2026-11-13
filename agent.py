@@ -4,13 +4,12 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 # from langchain_ollama import ChatOllama
 # from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+# from langchain.agents import create_agent
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage
 from langgraph.checkpoint.memory import InMemorySaver
 from dotenv import load_dotenv
 import os
-import math
-import asyncio
 from langchain_core.messages import HumanMessage, AIMessage
 
 load_dotenv()
@@ -51,12 +50,12 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 </core_rules>
 
 <tool_routing>
-- GENERATE GRAFIK atau DIAGRAM: Panggil `get_file_grafik` --> `create_grafik` --> jawab.
+- GENERATE GRAFIK atau DIAGRAM: Panggil `get_file_schema` --> `create_grafik` --> jawab.
 - FILE UNGGAHAN LOKAL (FILE UPLOAD):
   * Dokumen Teks (PDF/WORD/TXT): Panggil `get_file_schema` -> Langsung jawab. DILARANG panggil DuckDB/Python!
   * Tabel Data (CSV/EXCEL):
     1. Panggil `get_file_schema`. Jangan hanya membaca schema! Kamu wajib mengeksekusi DuckDB untuk analisis data real.
-    2. Panggil `execute_duckdb_analysis` dengan query SQL spesifik pada tabel `dataset` (misal: `SELECT * FROM dataset WHERE STATUS = 'KRITIS'`).
+    2. Panggil `execute_python_analysis` dengan syntax python spesifik pada tabel `dataset`.
 </tool_routing>
 </system_instructions>
 """
