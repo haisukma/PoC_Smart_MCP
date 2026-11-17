@@ -28,7 +28,7 @@ register_isolator_clean_tools(mcp)
 register_thermovisi_detail_tools(mcp)
 register_thermovisi_report_tools(mcp)
 register_isolator_clean_report_tools(mcp)
-# register_isolator_change_tools(mcp)
+register_isolator_change_tools(mcp)
 register_isolator_change_report_tools(mcp)
 
 if __name__ == "__main__":

@@ -56,6 +56,7 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 - THERMOVISI REPORT: Panggil `get_thermovisi_report_df` --> `execute_thermovisi_report_analysis` --> Jawab
 - PEMBERSIHAN ISOLATOR DETAIL: Panggil `get_isolator_clean_df` --> `execute_isolator_clean_analysis` --> Jawab
 - SUMMARY PEMBERSIHAN ISOLATOR: Panggil `get_isolator_report_df` --> `execute_isolator_report_analysis` --> Jawab
+- PENGGANTIAN ISOLATOR DETAIL: Panggil `get_isolator_change_df` --> `execute_isolator_change_analysis` --> Jawab
 - SUMMARY PENGGANTIAN ISOLATOR: Panggil `get_isolator_change_report_df` --> `execute_isolator_change_report_analysis` --> Jawab
 - GENERATE GRAFIK atau DIAGRAM: Panggil `get_file_schema` --> `create_grafik` --> Jawab
 - FILE UNGGAHAN LOKAL (FILE UPLOAD):
