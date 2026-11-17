@@ -184,7 +184,7 @@ async def iterate_with_timeout(async_iterable, timeout):
                 event = await asyncio.wait_for(
                     iterator.__anext__(),
                     timeout=remaining)
-
+                
             except StopAsyncIteration:
                 break
 
@@ -194,6 +194,47 @@ async def iterate_with_timeout(async_iterable, timeout):
         aclose = getattr(iterator, "aclose", None)
         if aclose:
             await aclose()
+
+def get_message_text(content):
+    """Mengambil teks dari content LangChain message."""
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, list):
+        parts = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict) and isinstance(block.get("text"), str):
+                parts.append(block["text"])
+
+        return " ".join(parts).strip()
+    return ""
+
+def format_recent_history(messages, limit=5):
+    """Mengambil maksimal 5 pesan terakhir dari user dan assistant."""
+    history = []
+
+    for msg in messages:
+        if isinstance(msg, dict):
+            role = msg.get("role") or msg.get("type")
+            content = msg.get("content", "")
+        else:
+            role = getattr(msg, "type", None)
+            content = getattr(msg, "content", "")
+
+        if role in ("human", "user"):
+            role_name = "USER"
+        elif role in ("ai", "assistant"):
+            role_name = "ASSISTANT"
+        else:
+            continue
+
+        text = get_message_text(content)
+        if text:
+            history.append(f"{role_name}: {text}")
+
+    return "\n".join(history[-limit:])
 
 async def stream_agent_response(
     user_input: str,
@@ -431,9 +472,40 @@ async def chat_endpoint(
         finally:
             await file.close()
 
+    # topic_input = f"""
+    #     USER_MESSAGE: {message}
+    #     FILE CONTENT: {file_content}
+    # """
+
+    agent = get_active_agent()
+
+    config = {
+        "configurable": {"thread_id": thread_id}}
+
+    try:
+        snapshot = await agent.aget_state(config)
+        previous_messages = snapshot.values.get("messages", [])
+        recent_history = format_recent_history(previous_messages, limit=5)
+        logger.info(
+            f"Jumlah pesan history untuk Topic Control: "
+            f"{len(recent_history.splitlines()) if recent_history else 0}")
+
+    except Exception:
+        logger.exception("Gagal mengambil conversation history")
+
+        raise HTTPException(
+            status_code=503,
+            detail="Riwayat percakapan tidak dapat diperiksa")
+
     topic_input = f"""
-        USER_MESSAGE: {message}
-        FILE CONTENT: {file_content}
+    CONVERSATION HISTORY:
+    {recent_history if recent_history else "Belum ada riwayat percakapan."}
+
+    CURRENT USER MESSAGE:
+    {message}
+
+    FILE CONTENT:
+    {file_content if file_content else "Tidak ada file yang diunggah."}
     """
 
     try:
@@ -451,6 +523,22 @@ async def chat_endpoint(
         raise HTTPException(
             status_code=503,
             detail="Pemeriksaan topik sedang mengalami gangguan")
+
+    # try:
+    #     topic_probability = await asyncio.to_thread(check_topic, topic_input)
+    #     if (
+    #         isinstance(topic_probability, bool)
+    #         or not isinstance(topic_probability, (int, float))
+    #         or not math.isfinite(topic_probability)
+    #         or not 0 <= topic_probability <= 1
+    #     ):
+    #         raise ValueError("Invalid topic probability")
+
+    # except Exception:
+    #     logger.exception("Topic Control Error")
+    #     raise HTTPException(
+    #         status_code=503,
+    #         detail="Pemeriksaan topik sedang mengalami gangguan")
 
     if topic_probability >= 0.50 and file_bytes is not None:
         saved_filename = (f"{uuid.uuid4().hex}_{original_filename}")

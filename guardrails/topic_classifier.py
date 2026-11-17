@@ -82,7 +82,7 @@ def check_topic(user_message: str) -> float:
                 "type": "noul",
                 "instructions": """
                     Tugas:
-                    Tentukan apakah pesan dan file yang diinputkan pengguna berkaitan dengan
+                    Tentukan apakah pesan, file, dan history chat yang diinputkan pengguna berkaitan dengan
                     bidang TRANSMISI TENAGA LISTRIK.
 
                     CAKUPAN TOPIK YANG DIIZINKAN:
@@ -116,6 +116,14 @@ def check_topic(user_message: str) -> float:
                     - Memfilter data berdasarkan nama jalur,tower, penghantar, lokasi, atau periode
                     - Menganalisis tren dan anomali data transmisi
 
+                    4. SAPAAN:
+                    - Hi, Hello, atau Hai
+                    - Selamat pagi, sore, siang malam
+                    - Tes
+                    - Apa kabar?
+                    - Permisi
+                    - Salam
+
                     ATURAN PENTING:
 
                     Permintaan pengolahan data, visualisasi, perhitungan,
@@ -132,18 +140,18 @@ def check_topic(user_message: str) -> float:
                     eksplisit selama konteksnya masih berkaitan
                     dengan cakupan transmisi tenaga listrik
 
-                    Pertanyaan dan file yang sama sekali tidak berkaitan dengan
+                    Pertanyaan, file, dan history chat yang sama sekali tidak berkaitan dengan
                     cakupan tersebut termasuk OFF-TOPIC
                 """,
                 "criteria": {
                     "true": """
-                        Pesan dan file membahas aset/item, operasional, inspeksi,
+                        Pesan, file, dan histry chat membahas aset/item, operasional, inspeksi,
                         pemeliharaan, kondisi, atau pengolahan dan
                         analisis data yang berkaitan dengan transmisi
                         tenaga listrik
                     """,
                     "false": """
-                        Pesan dan file tidak memiliki hubungan dengan aset/item,
+                        Pesan, file, dan history chat tidak memiliki hubungan dengan aset/item,
                         operasional, kegiatan, atau data transmisi
                         tenaga listrik
                     """

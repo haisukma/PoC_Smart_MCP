@@ -6,6 +6,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.memory import InMemorySaver
 from dotenv import load_dotenv
 import os
@@ -49,12 +50,18 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 </core_rules>
 
 <tool_routing>
-- GENERATE GRAFIK atau DIAGRAM: Panggil `get_file_schema` --> `create_grafik` --> jawab.
+- GROUNDING DETAIL: Panggil `get_grounding_detail_df` --> `execute_grounding_detail_analysis` --> Jawab
+- GROUNDING REPORT: Panggil `get_grounding_report_df` --> `execute_grounding_report_analysis` --> Jawab
+- THERMOVISI DETAIL: Panggil `get_thermovisi_detail_df` --> `execute_thermovisi_detail_analysis` --> Jawab
+- THERMOVISI REPORT: Panggil `get_thermovisi_report_df` --> `execute_thermovisi_report_analysis` --> Jawab
+- ISOLATOR DETAIL: Panggil `get_isolator_detail_df` --> `execute_isolator_detail_analysis` --> Jawab
+- ISOLATOR REPORT: Panggil `get_isolator_report_df` --> `execute_isolator_report_analysis` --> Jawab
+- GENERATE GRAFIK atau DIAGRAM: Panggil `get_file_schema` --> `create_grafik` --> Jawab
 - FILE UNGGAHAN LOKAL (FILE UPLOAD):
   * Dokumen Teks (PDF/WORD/TXT): Panggil `get_file_schema` -> Langsung jawab. DILARANG panggil DuckDB/Python!
   * Tabel Data (CSV/EXCEL):
-    1. Panggil `get_file_schema`. Jangan hanya membaca schema! Kamu wajib mengeksekusi DuckDB untuk analisis data real.
-    2. Panggil `execute_python_analysis` dengan syntax python spesifik pada tabel `dataset`.
+    1. Panggil `get_file_schema`. Jangan hanya membaca schema! Kamu wajib mengeksekusi DuckDB untuk analisis data real
+    2. Panggil `execute_python_analysis` dengan syntax python spesifik pada tabel `dataset`
 </tool_routing>
 </system_instructions>
 """
@@ -85,6 +92,11 @@ async def init_agent():
     # )
 
     checkpointer = InMemorySaver()
+    # DATABASE_URL = os.getenv("DATABASE_URL")
+    # checkpointer_cm = AsyncPostgresSaver.from_conn_string(DATABASE_URL)
+    # checkpointer = await checkpointer_cm.__aenter__()
+
+    # await checkpointer.setup()
     agent_executor = create_react_agent(
         model=llm,
         tools=mcp_tools,
@@ -92,11 +104,13 @@ async def init_agent():
         checkpointer=checkpointer)
 
 async def shutdown_agent():
-    global mcp_session, mcp_context
+    global mcp_session, mcp_context, checkpointer
     if mcp_session:
         await mcp_session.__aexit__(None, None, None)
     if mcp_context:
         await mcp_context.__aexit__(None, None, None)
+    # if checkpointer:
+    #     await checkpointer.__aexit__(None, None, None)
 
 def get_active_agent():
     """Helper function agar memanggil instance agent_executor yang sudah terisi"""
