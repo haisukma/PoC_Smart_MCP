@@ -54,8 +54,9 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 - GROUNDING REPORT: Panggil `get_grounding_report_df` --> `execute_grounding_report_analysis` --> Jawab
 - THERMOVISI DETAIL: Panggil `get_thermovisi_detail_df` --> `execute_thermovisi_detail_analysis` --> Jawab
 - THERMOVISI REPORT: Panggil `get_thermovisi_report_df` --> `execute_thermovisi_report_analysis` --> Jawab
-- ISOLATOR DETAIL: Panggil `get_isolator_detail_df` --> `execute_isolator_detail_analysis` --> Jawab
-- ISOLATOR REPORT: Panggil `get_isolator_report_df` --> `execute_isolator_report_analysis` --> Jawab
+- PEMBERSIHAN ISOLATOR DETAIL: Panggil `get_isolator_clean_df` --> `execute_isolator_clean_analysis` --> Jawab
+- SUMMARY PEMBERSIHAN ISOLATOR: Panggil `get_isolator_report_df` --> `execute_isolator_report_analysis` --> Jawab
+- SUMMARY PENGGANTIAN ISOLATOR: Panggil `get_isolator_change_report_df` --> `execute_isolator_change_report_analysis` --> Jawab
 - GENERATE GRAFIK atau DIAGRAM: Panggil `get_file_schema` --> `create_grafik` --> Jawab
 - FILE UNGGAHAN LOKAL (FILE UPLOAD):
   * Dokumen Teks (PDF/WORD/TXT): Panggil `get_file_schema` -> Langsung jawab. DILARANG panggil DuckDB/Python!
@@ -83,7 +84,7 @@ async def init_agent():
     llm = ChatOpenAI(
         model="openrouter/free",
         temperature=0.1,
-        api_key=os.getenv("OPEN_ROUTER_KEY"),
+        api_key=os.getenv("OPEN_ROUTER_KEY1"),
         base_url="https://openrouter.ai/api/v1"
     )
 

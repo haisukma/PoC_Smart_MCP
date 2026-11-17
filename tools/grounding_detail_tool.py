@@ -2,6 +2,7 @@ import io
 import contextlib
 import pandas as pd
 import numpy as np
+from e2b_code_interpreter import AsyncSandbox
 from services_mcp.grounding_detail_service import get_grounding_detail_df
 
 GROUNDING_DETAIL_DF = None
@@ -36,7 +37,13 @@ def register_grounding_detail_tools(mcp):
                 "pd": pd
             }
 
+            # sandbox = await AsyncSandbox.create()
             output_buffer = io.StringIO()
+            # try:
+            #     execution = await sandbox.run_code(code, timeout=60)
+            #     if execution.error:
+            #         return f"error saat eksekusi kode python"
+            #     stdout_results = exec
             with contextlib.redirect_stdout(output_buffer):
                 exec(code, local_vars_grounding)
 

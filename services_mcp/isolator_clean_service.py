@@ -9,9 +9,9 @@ load_dotenv()
 API_URL = os.getenv("JARVIS_API_URL")
 API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
-async def get_isolator_detail_df() -> pd.DataFrame:
+async def get_isolator_clean_df() -> pd.DataFrame:
     """
-    Mengambil seluruh data DETAIL ISOLATOR dari API
+    Mengambil seluruh data DETAIL PEMBERSIHAN ISOLATOR dari API
     """
 
     url = f"{API_URL}/isolator"

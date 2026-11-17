@@ -8,13 +8,12 @@ load_dotenv()
 API_URL = os.getenv("JARVIS_API_URL")
 API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
-async def get_isolator_report_df() -> dict[str, pd.DataFrame]:
+async def get_isolator_change_report_df() -> dict[str, pd.DataFrame]:
     """
-    Mengambil data RANGKUMAN ISOLATOR dari API
-    dan mengembalikan setiap kategori sebagai DataFrame
+    Mengambil data laporan AGREGASI atau SUMMARY PENGGANTIAN ISOLATOR dari API
     """
 
-    url = f"{API_URL}/isolator-report"
+    url = f"{API_URL}/isolator-change-report"
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Accept": "application/json"
@@ -29,7 +28,7 @@ async def get_isolator_report_df() -> dict[str, pd.DataFrame]:
 
         response.raise_for_status()
         result = response.json()
-        data = result.get("data", {})
+        data = result.get("data", [])
 
         if not data:
             return {}

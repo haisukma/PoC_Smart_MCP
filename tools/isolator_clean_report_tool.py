@@ -3,24 +3,24 @@ import contextlib
 import pandas as pd
 import numpy as np
 import json
-from services_mcp.isolator_report_service import get_isolator_report_df
+from services_mcp.isolator_clean_report_service import get_isolator_clean_report_df
 
-__ISOLATOR_REPORT_DF: pd.DataFrame = None
+__ISOLATOR_CLEAN_REPORT_DF: pd.DataFrame = None
 
-async def _get_cached_isolator_report_df() -> dict[str, pd.DataFrame]:
-    global __ISOLATOR_REPORT_DF
+async def _get_cached_isolator_clean_report_df() -> dict[str, pd.DataFrame]:
+    global __ISOLATOR_CLEAN_REPORT_DF
 
-    if __ISOLATOR_REPORT_DF is None or not __ISOLATOR_REPORT_DF:
-        __ISOLATOR_REPORT_DF = await get_isolator_report_df()
+    if __ISOLATOR_CLEAN_REPORT_DF is None or not __ISOLATOR_CLEAN_REPORT_DF:
+        __ISOLATOR_CLEAN_REPORT_DF = await get_isolator_clean_report_df()
 
-    return __ISOLATOR_REPORT_DF
+    return __ISOLATOR_CLEAN_REPORT_DF
 
-def register_isolator_report_tools(mcp):
+def register_isolator_clean_report_tools(mcp):
 
     @mcp.tool()
-    async def execute_isolator_report_analysis(code: str) -> str:
+    async def execute_isolator_clean_report_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis data ISOLATOR REPORT/KESIMPULAN ISOLATOR dari API
+        Gunakan tool ini untuk menganalisis data LAPORAN SUMMARY/AGREGASI PEMBERSIHAN ISOLATOR dari API
         
         DataFrame yang tersedia:
         - df_realisasi_total: Data isolator berdasarkan realisasi total
@@ -30,7 +30,7 @@ def register_isolator_report_tools(mcp):
         """
 
         try:
-            isolator_data = await _get_cached_isolator_report_df()
+            isolator_data = await _get_cached_isolator_clean_report_df()
             if not isolator_data:
                 return "Data isolator report dari API kosong"
 

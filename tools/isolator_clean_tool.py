@@ -2,36 +2,36 @@ import io
 import contextlib
 import pandas as pd
 import numpy as np
-from services_mcp.isolator_detail_service import get_isolator_detail_df
+from services_mcp.isolator_clean_service import get_isolator_clean_df
 
-ISOLATOR_REPORT_DF = None
+ISOLATOR_CLEAN_DF = None
 
-async def _get_cached_isolator_detail_df() -> pd.DataFrame:
-    global ISOLATOR_REPORT_DF
+async def _get_cached_isolator_clean_df() -> pd.DataFrame:
+    global ISOLATOR_CLEAN_DF
 
-    if ISOLATOR_REPORT_DF is None or ISOLATOR_REPORT_DF.empty:
-        ISOLATOR_REPORT_DF = await get_isolator_detail_df()
+    if ISOLATOR_CLEAN_DF is None or ISOLATOR_CLEAN_DF.empty:
+        ISOLATOR_CLEAN_DF = await get_isolator_clean_df()
 
-    return ISOLATOR_REPORT_DF
+    return ISOLATOR_CLEAN_DF
 
-def register_isolator_detail_tools(mcp):
+def register_isolator_clean_tools(mcp):
 
     @mcp.tool()
-    async def execute_isolator_detail_analysis(code: str) -> str:
+    async def execute_isolator_clean_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis data DETAIL ISOLATOR
+        Gunakan tool ini untuk menganalisis data DETAIL PEMBERSIHAN ISOLATOR
         
         DataFrame tersedia dalam variabel df.
         WAJIB menggunakan print(...) untuk melihat output
         """
 
         try:
-            df_isolator = await _get_cached_isolator_detail_df()
-            if df_isolator.empty:
+            df_isolator_clean = await _get_cached_isolator_clean_df()
+            if df_isolator_clean.empty:
                 return "Data grounding report kosong"
 
             local_vars_isolator = {
-                "df": df_isolator,
+                "df": df_isolator_clean,
                 "pd": pd
             }
 

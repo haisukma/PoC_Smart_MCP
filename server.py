@@ -7,10 +7,12 @@ from tools.websearch_tool import register_web_search_tools
 from tools.get_file_schema import register_file_schema
 from tools.grounding_report_tool import register_grounding_report_tools
 from tools.grounding_detail_tool import register_grounding_detail_tools
-from tools.isolator_detail_tool import register_isolator_detail_tools
+from tools.isolator_clean_tool import register_isolator_clean_tools
 from tools.thermovisi_detail_tool import register_thermovisi_detail_tools
 from tools.thermovisi_report_tool import register_thermovisi_report_tools
-from tools.isolator_report_tool import register_isolator_report_tools
+from tools.isolator_clean_report_tool import register_isolator_clean_report_tools
+from tools.isolator_change_tool import register_isolator_change_tools
+from tools.isolator_change_report_tool import register_isolator_change_report_tools
 
 mcp = FastMCP("Multi Data MCP Server")
 
@@ -22,10 +24,12 @@ register_web_search_tools(mcp)
 register_grafik_tools(mcp)
 register_grounding_report_tools(mcp)
 register_grounding_detail_tools(mcp)
-register_isolator_detail_tools(mcp)
+register_isolator_clean_tools(mcp)
 register_thermovisi_detail_tools(mcp)
 register_thermovisi_report_tools(mcp)
-register_isolator_report_tools(mcp)
+register_isolator_clean_report_tools(mcp)
+# register_isolator_change_tools(mcp)
+register_isolator_change_report_tools(mcp)
 
 if __name__ == "__main__":
     mcp.run()
