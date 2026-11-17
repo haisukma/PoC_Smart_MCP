@@ -4,6 +4,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 # from langchain_ollama import ChatOllama
 # from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from contextlib import asynccontextmanager
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -14,6 +15,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 load_dotenv()
 
+DB_URL = os.getenv("DATABASE_URL")
 server_params = StdioServerParameters(
     command="python",
     args=["server.py"])
@@ -22,6 +24,7 @@ agent_executor = None
 mcp_session = None
 mcp_context = None
 checkpointer = None
+checkpointer_context = None
 
 SYSTEM_PROMPT = """
 <system_instructions>
@@ -67,7 +70,9 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 """
 
 async def init_agent():
-    global agent_executor, mcp_session, mcp_context, checkpointer
+    global agent_executor
+    global mcp_session, mcp_context
+    global checkpointer, checkpointer_context
 
     mcp_context = stdio_client(server_params)
     read, write = await mcp_context.__aenter__()
@@ -80,40 +85,44 @@ async def init_agent():
 
     llm = ChatOpenAI(
         model="openrouter/free",
-        # model="stealth/ox-alpha",
         temperature=0.1,
-        # max_tokens=2000,
         api_key=os.getenv("OPEN_ROUTER_KEY"),
-        base_url="https://openrouter.ai/api/v1")
+        base_url="https://openrouter.ai/api/v1"
+    )
 
-    # llm = ChatOllama(
-    #     model="qwen2.5:7b",
-    #     temperature=0
-    # )
+    checkpointer_context = AsyncPostgresSaver.from_conn_string(DB_URL)
+    checkpointer = await checkpointer_context.__aenter__()
+    await checkpointer.setup()
 
-    checkpointer = InMemorySaver()
-    # DATABASE_URL = os.getenv("DATABASE_URL")
-    # checkpointer_cm = AsyncPostgresSaver.from_conn_string(DATABASE_URL)
-    # checkpointer = await checkpointer_cm.__aenter__()
-
-    # await checkpointer.setup()
     agent_executor = create_react_agent(
         model=llm,
         tools=mcp_tools,
         prompt=SystemMessage(content=SYSTEM_PROMPT),
-        checkpointer=checkpointer)
+        checkpointer=checkpointer
+    )
 
 async def shutdown_agent():
-    global mcp_session, mcp_context, checkpointer
+    global mcp_session, mcp_context
+    global checkpointer, checkpointer_context
+    global agent_executor
+
     if mcp_session:
         await mcp_session.__aexit__(None, None, None)
+
     if mcp_context:
         await mcp_context.__aexit__(None, None, None)
-    # if checkpointer:
-    #     await checkpointer.__aexit__(None, None, None)
+
+    if checkpointer_context:
+        await checkpointer_context.__aexit__(None, None, None)
+
+    agent_executor = None
+    checkpointer = None
+    checkpointer_context = None
 
 def get_active_agent():
-    """Helper function agar memanggil instance agent_executor yang sudah terisi"""
     if agent_executor is None:
-        raise RuntimeError("Agent belum di-inisialisasi oleh FastAPI lifespan!")
+        raise RuntimeError(
+            "Agent belum diinisialisasi oleh FastAPI lifespan!"
+        )
+
     return agent_executor

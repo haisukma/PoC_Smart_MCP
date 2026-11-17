@@ -61,9 +61,7 @@ meter_provider = MeterProvider(
                 headers=headers_dict))])
 metrics.set_meter_provider(meter_provider)
 
-# tracer = trace.get_tracer("mcp-monitoring")
 tracer = trace.get_tracer(os.getenv("OTEL_SERVICE_NAME"))
-# meter = metrics.get_meter("mcp-monitoring")
 meter = metrics.get_meter(os.getenv("OTEL_SERVICE_NAME"))
 
 tool_calls = meter.create_counter(
@@ -196,7 +194,6 @@ async def iterate_with_timeout(async_iterable, timeout):
             await aclose()
 
 def get_message_text(content):
-    """Mengambil teks dari content LangChain message."""
     if isinstance(content, str):
         return content.strip()
 
@@ -212,7 +209,6 @@ def get_message_text(content):
     return ""
 
 def format_recent_history(messages, limit=5):
-    """Mengambil maksimal 5 pesan terakhir dari user dan assistant."""
     history = []
 
     for msg in messages:
@@ -472,11 +468,6 @@ async def chat_endpoint(
         finally:
             await file.close()
 
-    # topic_input = f"""
-    #     USER_MESSAGE: {message}
-    #     FILE CONTENT: {file_content}
-    # """
-
     agent = get_active_agent()
 
     config = {
@@ -486,10 +477,7 @@ async def chat_endpoint(
         snapshot = await agent.aget_state(config)
         previous_messages = snapshot.values.get("messages", [])
         recent_history = format_recent_history(previous_messages, limit=5)
-        logger.info(
-            f"Jumlah pesan history untuk Topic Control: "
-            f"{len(recent_history.splitlines()) if recent_history else 0}")
-
+        
     except Exception:
         logger.exception("Gagal mengambil conversation history")
 
@@ -523,22 +511,6 @@ async def chat_endpoint(
         raise HTTPException(
             status_code=503,
             detail="Pemeriksaan topik sedang mengalami gangguan")
-
-    # try:
-    #     topic_probability = await asyncio.to_thread(check_topic, topic_input)
-    #     if (
-    #         isinstance(topic_probability, bool)
-    #         or not isinstance(topic_probability, (int, float))
-    #         or not math.isfinite(topic_probability)
-    #         or not 0 <= topic_probability <= 1
-    #     ):
-    #         raise ValueError("Invalid topic probability")
-
-    # except Exception:
-    #     logger.exception("Topic Control Error")
-    #     raise HTTPException(
-    #         status_code=503,
-    #         detail="Pemeriksaan topik sedang mengalami gangguan")
 
     if topic_probability >= 0.50 and file_bytes is not None:
         saved_filename = (f"{uuid.uuid4().hex}_{original_filename}")

@@ -14,7 +14,6 @@ async def get_isolator_detail_df() ->pd.DataFrame:
     """
 
     url = f"{API_URL}/isolator"
-
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Accept": "application/json"}

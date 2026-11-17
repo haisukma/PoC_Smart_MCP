@@ -12,7 +12,7 @@ API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 async def get_grounding_report_df() -> dict[str, pd.DataFrame]:
     """
     Mengambil data grounding report dari API
-    dan mengembalikan setiap kategori sebagai DataFrame.
+    dan mengembalikan setiap kategori sebagai DataFrame
     """
 
     url = f"{API_URL}/grounding-report"
