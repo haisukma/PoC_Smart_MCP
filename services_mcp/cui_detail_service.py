@@ -11,7 +11,9 @@ API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
 async def get_cui_detail_df() -> pd.DataFrame:
     """
-    Mengambil seluruh data DETAIL CLIMB UP INSPECTION dari API
+    Mengambil data mentah (DataFrame) DETAIL CLIMB UP INSPECTION.
+    WAJIB dipanggil PERTAMA kali untuk pertanyaan detail CLIMB UP INSPECTION, 
+    sebelum memanggil `execute_cui_detail_analysis`
     """
 
     url = f"{API_URL}/climb-up-inspection"

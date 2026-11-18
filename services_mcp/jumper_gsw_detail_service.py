@@ -11,7 +11,9 @@ API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
 async def get_jumper_gsw_detail_df() -> pd.DataFrame:
     """
-    Mengambil seluruh data ASSESSMEN JUMPER GSW dari API
+    Mengambil data mentah (DataFrame) DETAIL JUMPER GSW.
+    WAJIB dipanggil PERTAMA kali untuk pertanyaan detail JUMPER GSW, 
+    sebelum memanggil `execute_jumper_gsw_detail_analysis`
     """
 
     url = f"{API_URL}/jumper-gsw"

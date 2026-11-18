@@ -11,7 +11,9 @@ API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
 async def get_grounding_detail_df() -> pd.DataFrame:
     """
-    Mengambil seluruh data DETAIL GROUNDING dari API
+    Mengambil data mentah (DataFrame) DETAIL GROUNDING atau PENTANAHAN.
+    WAJIB dipanggil PERTAMA kali untuk pertanyaan detail GROUNDING atau PENTANAHAN, 
+    sebelum memanggil `execute_grounding_detail_analysis`
     """
 
     url = f"{API_URL}/grounding"

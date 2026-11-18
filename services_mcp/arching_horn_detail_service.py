@@ -11,7 +11,9 @@ API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
 async def get_arching_horn_detail_df() -> pd.DataFrame:
     """
-    Mengambil seluruh data DETAIL INSPEKSI ARCHING HORN dari API
+    Mengambil data mentah (DataFrame) DETAIL ARCHING HORN
+    WAJIB dipanggil PERTAMA kali untuk pertanyaan detail ARCHING HORN, 
+    sebelum memanggil `execute_arching_horn_detail_analysis`
     """
 
     url = f"{API_URL}/arching-horn"

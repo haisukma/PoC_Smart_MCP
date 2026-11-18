@@ -1,0 +1,75 @@
+import httpx
+import asyncio
+import pandas as pd
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+API_URL = os.getenv("JARVIS_API_URL")
+API_TOKEN = os.getenv("JARVIS_API_TOKEN")
+
+async def get_protection_angle_detail_df() -> pd.DataFrame:
+    """
+    Mengambil data mentah (DataFrame) DETAIL PROTECTION ANGLE atau SUDUT LINDUNG.
+    WAJIB dipanggil PERTAMA kali untuk pertanyaan detail PROTECTION ANGLE atau SUDUT LINDUNG, 
+    sebelum memanggil `execute_protection_angle_detail_analysis`
+    """
+
+    url = f"{API_URL}/protection-angle"
+    headers = {
+        "Authorization": f"Bearer {API_TOKEN}",
+        "Accept": "application/json"}
+
+    all_records = []
+    max_concurrent = 5
+    next_page = True
+    page = 1
+    per_page = 10000
+
+    async with httpx.AsyncClient(
+        timeout=httpx.Timeout(60),
+        limits=httpx.Limits(
+            max_connections=max_concurrent,
+            max_keepalive_connections=max_concurrent)
+    ) as client:
+
+        async def fetch_page(page_number, semaphore):
+            async with semaphore:
+                response = await client.get(
+                    url,
+                    headers=headers,
+                    params={
+                        "page": page_number,
+                        "per_page": per_page})
+
+                response.raise_for_status()
+                result = response.json()
+
+                return page_number, result
+            
+        semaphore = asyncio.Semaphore(max_concurrent)
+        while next_page:
+            pages = range(
+                page,
+                page + max_concurrent)
+
+            results = await asyncio.gather(
+                *[
+                    fetch_page(p, semaphore)
+                    for p in pages])
+
+            next_page = False
+            for page_number, result in results:
+                records = result.get("data", [])
+                all_records.extend(records)
+                pagination = result.get("pagination", {})
+                if pagination.get("next_page", False):
+                    next_page = True
+
+            page += max_concurrent
+
+    if not all_records:
+        return pd.DataFrame()
+
+    return pd.DataFrame(all_records)

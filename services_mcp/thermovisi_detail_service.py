@@ -11,7 +11,9 @@ API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
 async def get_thermovisi_detail_df() -> pd.DataFrame:
     """
-    Mengambil seluruh data DETAIL THERMOVISI dari API
+    Mengambil data mentah (DataFrame) DETAIL THERMOVISI.
+    WAJIB dipanggil PERTAMA kali untuk pertanyaan detail THERMOVISI, 
+    sebelum memanggil `execute_thermovisi_detail_analysis`
     """
 
     url = f"{API_URL}/thermovisi"

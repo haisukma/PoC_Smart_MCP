@@ -19,10 +19,9 @@ def register_thermovisi_detail_tools(mcp):
     @mcp.tool()
     async def execute_thermovisi_detail_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis data DETAIL THERMOVISI
-        
-        DataFrame tersedia dalam variabel df.
-        WAJIB menggunakan print(...) untuk melihat output
+        Mengambil data mentah (DataFrame) DETAIL THERMOVISI.
+        WAJIB dipanggil PERTAMA kali untuk pertanyaan detail thermovisi, 
+        sebelum memanggil `execute_thermovisi_detail_analysis`
         """
 
         try:

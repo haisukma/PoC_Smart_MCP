@@ -11,7 +11,9 @@ API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
 async def get_sktt_detail_df() -> pd.DataFrame:
     """
-    Mengambil seluruh data DETAIL SALURAN KABEL TEGANGAN TINGGI dari API
+    Mengambil data mentah (DataFrame) DETAIL SKTT atau SALURAN KABEL TEGANGAN TINGGI.
+    WAJIB dipanggil PERTAMA kali untuk pertanyaan detail SKTT atau SALURAN KABEL TEGANGAN TINGGI, 
+    sebelum memanggil `execute_sktt_detail_analysis`
     """
 
     url = f"{API_URL}/sktt"

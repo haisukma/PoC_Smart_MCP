@@ -50,79 +50,113 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 </core_rules>
 
 <tool_routing>
-- GROUNDING DETAIL: Panggil `get_grounding_detail_df` --> `execute_grounding_detail_analysis` --> Jawab
-- GROUNDING REPORT: Panggil `get_grounding_report_df` --> `execute_grounding_report_analysis` --> Jawab
-- THERMOVISI DETAIL: Panggil `get_thermovisi_detail_df` --> `execute_thermovisi_detail_analysis` --> Jawab
-- THERMOVISI REPORT: Panggil `get_thermovisi_report_df` --> `execute_thermovisi_report_analysis` --> Jawab
-- PEMBERSIHAN ISOLATOR DETAIL: Panggil `get_isolator_clean_df` --> `execute_isolator_clean_analysis` --> Jawab
-- SUMMARY PEMBERSIHAN ISOLATOR: Panggil `get_isolator_report_df` --> `execute_isolator_report_analysis` --> Jawab
-- PENGGANTIAN ISOLATOR DETAIL: Panggil `get_isolator_change_df` --> `execute_isolator_change_analysis` --> Jawab
-- SUMMARY PENGGANTIAN ISOLATOR: Panggil `get_isolator_change_report_df` --> `execute_isolator_change_report_analysis` --> Jawab
-- SKTT DETAIL: Panggil `get_sktt_detail_df` --> `execute_sktt_detail_analysis` --> Jawab
-- SKTT REPORT: Panggil `get_sktt_report_df` --> `execute_sktt_report_analysis` --> Jawab
-- CUI DETAIL: Panggil `get_cui_detail_df` --> `execute_cui_detail` --> Jawab
-- JUMPER GSW DETAIL: Panggil `get_jumper_gsw_detail_df` --> `execute_jumper_gsw_detail` --> Jawab
-- SUMMARY JUMPER GSW: Panggil `get_jumper_gsw_report` --> `execute_jumper_gsw_report` --> Jawab
-- ARCHING HORN DETAIL: Panggil `get_arching_horn_detail_df` --> `execute_arching_horn_detail` --> Jawab
-- GENERATE GRAFIK atau DIAGRAM: Panggil `get_file_schema` --> `create_grafik` --> Jawab
-- FILE UNGGAHAN LOKAL (FILE UPLOAD):
-  * Dokumen Teks (PDF/WORD/TXT): Panggil `get_file_schema` -> Langsung jawab. DILARANG panggil DuckDB/Python!
-  * Tabel Data (CSV/EXCEL):
-    1. Panggil `get_file_schema`. Jangan hanya membaca schema! Kamu wajib mengeksekusi DuckDB untuk analisis data real
-    2. Panggil `execute_python_analysis` dengan syntax python spesifik pada tabel `dataset`
+- DATA DOMAIN TRANSMISI (Grounding, Thermovisi, Isolator, SKTT, CUI, Jumper GSW, Arching Horn, Layang, Lightning, Protection Angle):
+  Selalu jalankan dalam 2 tahap berurutan:
+  1. Panggil tool pengambilan data (`get_*_detail_df` atau `get_*_report_df`) sesuai topik yang ditanyakan.
+  2. Panggil tool analisis pasangannya (`execute_*_detail_analysis` atau `execute_*_report_analysis`) sebelum menjawab.
+- VISUALISASI GRAFIK: `get_file_schema` -> `create_grafik` -> Jawab.
+- FILE UNGGAHAN LOKAL:
+  - Dokumen Teks (PDF/WORD/TXT): `get_file_schema` -> Langsung jawab (DILARANG pakai Python/DuckDB).
+  - Tabel Data (CSV/EXCEL): `get_file_schema` -> `execute_python_analysis` (pada tabel `dataset`) -> Jawab.
 </tool_routing>
 </system_instructions>
 """
 
+from contextlib import AsyncExitStack
+
+exit_stack: AsyncExitStack | None = None
+agent_executor = None
+
 async def init_agent():
-    global agent_executor
-    global mcp_session, mcp_context
-    global checkpointer, checkpointer_context
+    global agent_executor, exit_stack
+    exit_stack = AsyncExitStack()
 
-    mcp_context = stdio_client(server_params)
-    read, write = await mcp_context.__aenter__()
+    try:
+        read, write = await exit_stack.enter_async_context(stdio_client(server_params))
+        mcp_session = await exit_stack.enter_async_context(ClientSession(read, write))
+        await mcp_session.initialize()
 
-    mcp_session = ClientSession(read, write)
-    await mcp_session.__aenter__()
-    await mcp_session.initialize()
+        mcp_tools = await load_mcp_tools(mcp_session)
 
-    mcp_tools = await load_mcp_tools(mcp_session)
+        llm = ChatOpenAI(
+            model="openrouter/free", 
+            temperature=0.1,
+            api_key=os.getenv("OPEN_ROUTER_KEY2"),
+            base_url="https://openrouter.ai/api/v1"
+        )
 
-    llm = ChatOpenAI(
-        model="openrouter/free",
-        temperature=0.1,
-        api_key=os.getenv("OPEN_ROUTER_KEY1"),
-        base_url="https://openrouter.ai/api/v1"
-    )
+        checkpointer = await exit_stack.enter_async_context(
+            AsyncPostgresSaver.from_conn_string(DB_URL)
+        )
+        await checkpointer.setup()
 
-    checkpointer_context = AsyncPostgresSaver.from_conn_string(DB_URL)
-    checkpointer = await checkpointer_context.__aenter__()
-    await checkpointer.setup()
-
-    agent_executor = create_react_agent(
-        model=llm,
-        tools=mcp_tools,
-        prompt=SystemMessage(content=SYSTEM_PROMPT),
-        checkpointer=checkpointer
-    )
+        agent_executor = create_react_agent(
+            model=llm,
+            tools=mcp_tools,
+            prompt=SystemMessage(content=SYSTEM_PROMPT),
+            checkpointer=checkpointer
+        )
+    except Exception:
+        await exit_stack.aclose()
+        exit_stack = None
+        raise
 
 async def shutdown_agent():
-    global mcp_session, mcp_context
-    global checkpointer, checkpointer_context
-    global agent_executor
-
-    if mcp_session:
-        await mcp_session.__aexit__(None, None, None)
-
-    if mcp_context:
-        await mcp_context.__aexit__(None, None, None)
-
-    if checkpointer_context:
-        await checkpointer_context.__aexit__(None, None, None)
-
+    global agent_executor, exit_stack
+    if exit_stack:
+        await exit_stack.aclose()
+        exit_stack = None
     agent_executor = None
-    checkpointer = None
-    checkpointer_context = None
+
+# async def init_agent():
+#     global agent_executor
+#     global mcp_session, mcp_context
+#     global checkpointer, checkpointer_context
+
+#     mcp_context = stdio_client(server_params)
+#     read, write = await mcp_context.__aenter__()
+
+#     mcp_session = ClientSession(read, write)
+#     await mcp_session.__aenter__()
+#     await mcp_session.initialize()
+
+#     mcp_tools = await load_mcp_tools(mcp_session)
+
+#     llm = ChatOpenAI(
+#         model="nvidia/nemotron-3.5-lightning:free",
+#         temperature=0.1,
+#         api_key=os.getenv("OPEN_ROUTER_KEY2"),
+#         base_url="https://openrouter.ai/api/v1"
+#     )
+
+#     checkpointer_context = AsyncPostgresSaver.from_conn_string(DB_URL)
+#     checkpointer = await checkpointer_context.__aenter__()
+#     await checkpointer.setup()
+
+#     agent_executor = create_react_agent(
+#         model=llm,
+#         tools=mcp_tools,
+#         prompt=SystemMessage(content=SYSTEM_PROMPT),
+#         checkpointer=checkpointer
+#     )
+
+# async def shutdown_agent():
+#     global mcp_session, mcp_context
+#     global checkpointer, checkpointer_context
+#     global agent_executor
+
+#     if mcp_session:
+#         await mcp_session.__aexit__(None, None, None)
+
+#     if mcp_context:
+#         await mcp_context.__aexit__(None, None, None)
+
+#     if checkpointer_context:
+#         await checkpointer_context.__aexit__(None, None, None)
+
+#     agent_executor = None
+#     checkpointer = None
+#     checkpointer_context = None
 
 def get_active_agent():
     if agent_executor is None:

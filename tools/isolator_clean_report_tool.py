@@ -36,7 +36,7 @@ def register_isolator_clean_report_tools(mcp):
 
             local_vars = {
                 "df_realisasi_total": isolator_data["realisasi_total"],
-                "df_relisasi_tower": isolator_data["realisasi_tower"],
+                "df_realisasi_tower": isolator_data["realisasi_tower"],
                 "pd": pd
             }
 

@@ -1,6 +1,4 @@
 from mcp.server.fastmcp import FastMCP
-from tools.customer_tool import register_customer_tools
-from tools.ruleperformance_tool import register_rule_performance_tools
 from tools.analisis_file import register_analisis_file
 from tools.generate_grafik import register_grafik_tools
 from tools.websearch_tool import register_web_search_tools
@@ -19,15 +17,20 @@ from tools.cui_detail_tool import register_cui_detail_tools
 from tools.jumper_gsw_detail_tool import register_jumper_gsw_detail_tools
 from tools.jumper_gsw_report_tool import register_jumper_gsw_report_tools
 from tools.arching_horn_detail_tool import register_arching_horn_detail_tools
+from tools.lightning_detail_tool import register_lightning_detail_tools
+from tools.arching_horn_report_tool import register_arching_horn_report_tools
+from tools.layang_detail_tool import register_layang_detail_tools
+from tools.layang_report_tool import register_layang_report_tools
+from tools.protection_angle_detail_tool import register_protection_angle_detail_tools
+from tools.vulnerabilities_detail_tool import register_vulnerabilities_detail_tools
+from tools.vulnerabilities_report_tool import register_vulnerabilities_report_tools
 
 mcp = FastMCP("Multi Data MCP Server")
 
-register_customer_tools(mcp)
 register_file_schema(mcp)
-register_rule_performance_tools(mcp)
 register_analisis_file(mcp)
-register_web_search_tools(mcp)
-register_grafik_tools(mcp)
+# register_web_search_tools(mcp)
+# register_grafik_tools(mcp)
 register_grounding_report_tools(mcp)
 register_grounding_detail_tools(mcp)
 register_isolator_clean_tools(mcp)
@@ -42,6 +45,13 @@ register_cui_detail_tools(mcp)
 register_jumper_gsw_detail_tools(mcp)
 register_jumper_gsw_report_tools(mcp)
 register_arching_horn_detail_tools(mcp)
+register_lightning_detail_tools(mcp)
+register_arching_horn_report_tools(mcp)
+register_layang_detail_tools(mcp)
+register_layang_report_tools(mcp)
+register_protection_angle_detail_tools(mcp)
+register_vulnerabilities_detail_tools(mcp)
+register_vulnerabilities_report_tools(mcp)
 
 if __name__ == "__main__":
     mcp.run()

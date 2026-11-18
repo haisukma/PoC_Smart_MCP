@@ -11,7 +11,9 @@ API_TOKEN = os.getenv("JARVIS_API_TOKEN")
 
 async def get_isolator_clean_df() -> pd.DataFrame:
     """
-    Mengambil seluruh data DETAIL PEMBERSIHAN ISOLATOR dari API
+    Mengambil data mentah (DataFrame) DETAIL PEMBERSIHAN ISOLATOR.
+    WAJIB dipanggil PERTAMA kali untuk pertanyaan detail PEMBERSIHAN ISOLATOR, 
+    sebelum memanggil `execute_isolator_clean_detail_analysis`
     """
 
     url = f"{API_URL}/isolator"

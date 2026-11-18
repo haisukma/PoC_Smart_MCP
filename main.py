@@ -161,11 +161,34 @@ INJECTION_PATTERNS = [
 
 COMPILED_INJECTION_REGEX = [re.compile(p, re.IGNORECASE) for p in INJECTION_PATTERNS]
 
+def log_stage(
+    request_id: str,
+    stage: str,
+    started_at: float,
+    status: str = "success",
+    **details
+):
+    """Catat durasi sebuah tahapan pipeline."""
+    duration = time.perf_counter() - started_at
+    detail_text = " ".join(
+        f"{key}={value}"
+        for key, value in details.items()
+    )
+
+    logger.info(
+        f"PIPELINE | request_id={request_id} | "
+        f"stage={stage} | status={status} | "
+        f"duration={duration:.3f}s"
+        + (f" | {detail_text}" if detail_text else "")
+    )
+
+
 def validate_prompt_injection(user_input: str):
     for pattern in COMPILED_INJECTION_REGEX:
         if pattern.search(user_input):
             return True
     return False
+
 
 async def iterate_with_timeout(async_iterable, timeout):
     loop = asyncio.get_running_loop()
@@ -181,17 +204,17 @@ async def iterate_with_timeout(async_iterable, timeout):
             try:
                 event = await asyncio.wait_for(
                     iterator.__anext__(),
-                    timeout=remaining)
-                
+                    timeout=remaining
+                )
             except StopAsyncIteration:
                 break
 
             yield event
-
     finally:
         aclose = getattr(iterator, "aclose", None)
         if aclose:
             await aclose()
+
 
 def get_message_text(content):
     if isinstance(content, str):
@@ -206,7 +229,9 @@ def get_message_text(content):
                 parts.append(block["text"])
 
         return " ".join(parts).strip()
+
     return ""
+
 
 def format_recent_history(messages, limit=5):
     history = []
@@ -232,30 +257,37 @@ def format_recent_history(messages, limit=5):
 
     return "\n".join(history[-limit:])
 
+
 async def stream_agent_response(
     user_input: str,
     thread_id: str,
     filename: str | None = None,
-    topic_probability: float | None = None):
-
+    topic_probability: float | None = None,
+    request_id: str | None = None
+):
     if (
         isinstance(topic_probability, bool)
         or not isinstance(topic_probability, (int, float))
         or not math.isfinite(topic_probability)
-        or not 0 <= topic_probability <= 1):
-
+        or not 0 <= topic_probability <= 1
+    ):
         raise ValueError("Invalid topic probability")
 
     if topic_probability < 0.50:
         logger.info(
-            f"Permintaan ditolak. Topic probability: {topic_probability:.4f}")
-        yield ("Maaf saya hanya dapat membantu pertanyaan seputar Transmisi Tower Listrik")
+            f"GUARDRAIL REJECTED | request_id={request_id} | "
+            f"probability={topic_probability:.4f}"
+        )
+        yield "Maaf saya hanya dapat membantu pertanyaan seputar Transmisi Tower Listrik"
         return
 
-    logger.info(f"Topic probability: {topic_probability:.4f}")
-        
+    logger.info(
+        f"GUARDRAIL PASSED | request_id={request_id} | "
+        f"probability={topic_probability:.4f}"
+    )
+
     TIMEOUT_SECONDS = 300
-    start_time = time.perf_counter()
+    agent_started = time.perf_counter()
     agent = get_active_agent()
     messages = []
     tool_runs = {}
@@ -264,153 +296,240 @@ async def stream_agent_response(
         messages.append((
             "system",
             f"[INFO SISTEM]: Pengguna mengunggah file '{filename}'.\n"
-            f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"))
+            f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"
+        ))
 
     messages.append(("user", user_input))
     inputs = {"messages": messages}
     config = {
         "configurable": {"thread_id": thread_id},
-        "recursion_limit": 19}
+        "recursion_limit": 19
+    }
+
+    first_token_logged = False
+    model_runs = {}
 
     try:
         async for event in iterate_with_timeout(
             agent.astream_events(
                 inputs,
                 config=config,
-                version="v2"),
+                version="v2"
+            ),
+            TIMEOUT_SECONDS
+        ):
+            event_type = event.get("event")
+            tool_name = event.get("name", "unknown_tool")
+            run_id = str(event.get("run_id", ""))
+            data = event.get("data", {})
 
-            TIMEOUT_SECONDS):
-                event_type = event.get("event")
-                tool_name = event.get("name", "unknown_tool")
-                run_id = str(event.get("run_id", ""))
-                data = event.get("data", {})
-                if event_type == "on_tool_start":
-                    span = tracer.start_span(
-                        name=f"mcp.tool.{tool_name}")
-                    span.set_attribute(
-                        "mcp.tool.name", tool_name)
-                    span.set_attribute(
-                        "mcp.tool.run_id", run_id)
-                    tool_runs[run_id] = {
-                        "span": span,
-                        "start_time": time.perf_counter(),
-                        "tool_name": tool_name}
+            if event_type == "on_tool_start":
+                tool_started = time.perf_counter()
+                span = tracer.start_span(name=f"mcp.tool.{tool_name}")
+                span.set_attribute("mcp.tool.name", tool_name)
+                span.set_attribute("mcp.tool.run_id", run_id)
 
-                    tool_input = data.get("input", {})
-                    logger.info(f"TOOL INPUT: {tool_input}")
+                tool_runs[run_id] = {
+                    "span": span,
+                    "start_time": tool_started,
+                    "tool_name": tool_name
+                }
 
-                elif event_type == "on_tool_end":
-                    run = tool_runs.pop(run_id, None)
-                    tool_output = data.get("output", {})
-                    logger.info(f"TOOL OUTPUT: {tool_output}")
+                tool_input = data.get("input", {})
+                input_keys = (
+                    list(tool_input.keys())
+                    if isinstance(tool_input, dict)
+                    else []
+                )
 
-                    if run:
-                        duration = (time.perf_counter() - run["start_time"])
-                        attributes = {
-                            "mcp.tool.name": run["tool_name"],
-                            "mcp.tool.status": "success"}
+                logger.info(
+                    f"MCP TOOL START | request_id={request_id} | "
+                    f"tool={tool_name} | run_id={run_id} | "
+                    f"input_keys={input_keys}"
+                )
 
+            elif event_type == "on_chat_model_start":
+                model_run_id = str(event.get("run_id", ""))
+
+                model_runs[model_run_id] = {
+                    "start_time": time.perf_counter(),
+                    "model_name": event.get("metadata", {}).get("ls_model_name", "unknown")
+                }
+
+                logger.info(
+                    f"LLM START | request_id={request_id} | "
+                    f"run_id={model_run_id} | "
+                    f"model={model_runs[model_run_id]['model_name']}"
+                )
+
+            elif event_type == "on_chat_model_end":
+                model_run_id = str(event.get("run_id", ""))
+                run = model_runs.pop(model_run_id, None)
+
+                if run:
+                    duration = time.perf_counter() - run["start_time"]
+
+                    logger.info(
+                        f"LLM END | request_id={request_id} | "
+                        f"model={run['model_name']} | "
+                        f"duration={duration:.3f}s"
+                    )
+
+            elif event_type == "on_chat_model_error":
+                model_run_id = str(event.get("run_id", ""))
+                run = model_runs.pop(model_run_id, None)
+
+                logger.error(
+                    f"LLM ERROR | request_id={request_id} | "
+                    f"run_id={model_run_id} | "
+                    f"error={str(event.get('data', {}).get('error'))[:500]}"
+                )
+
+            elif event_type == "on_tool_end":
+                run = tool_runs.pop(run_id, None)
+
+                if run:
+                    duration = time.perf_counter() - run["start_time"]
+                    attributes = {
+                        "mcp.tool.name": run["tool_name"],
+                        "mcp.tool.status": "success"
+                    }
+
+                    run["span"].set_attribute("mcp.tool.status", "success")
+                    run["span"].end()
+                    tool_calls.add(1, attributes)
+                    tool_duration.record(duration, attributes)
+
+                    logger.info(
+                        f"MCP TOOL END | request_id={request_id} | "
+                        f"tool={run['tool_name']} | run_id={run_id} | "
+                        f"duration={duration:.3f}s | status=success"
+                    )
+                else:
+                    logger.warning(
+                        f"MCP TOOL END WITHOUT START | "
+                        f"request_id={request_id} | "
+                        f"tool={tool_name} | run_id={run_id}"
+                    )
+
+            elif event_type == "on_tool_error":
+                run = tool_runs.pop(run_id, None)
+                error = data.get("error")
+
+                if run:
+                    duration = time.perf_counter() - run["start_time"]
+                    attributes = {
+                        "mcp.tool.name": run["tool_name"],
+                        "mcp.tool.status": "error"
+                    }
+
+                    run["span"].set_attribute("mcp.tool.status", "error")
+                    if error:
                         run["span"].set_attribute(
-                            "mcp.tool.status",
-                            "success")
+                            "error.message",
+                            str(error)[:500]
+                        )
+                        if isinstance(error, BaseException):
+                            run["span"].record_exception(error)
 
-                        run["span"].end()
-                        tool_calls.add(1, attributes)
-                        tool_duration.record(
-                            duration, attributes)
+                    run["span"].set_status(Status(StatusCode.ERROR))
+                    run["span"].end()
+                    tool_calls.add(1, attributes)
+                    tool_errors.add(1, attributes)
+                    tool_duration.record(duration, attributes)
 
-                        logger.info(
-                            f"MCP TOOL SELESAI: "
-                            f"{run['tool_name']} "
-                            f"(Durasi: {duration:.2f} detik)")
+                    logger.error(
+                        f"MCP TOOL ERROR | request_id={request_id} | "
+                        f"tool={run['tool_name']} | run_id={run_id} | "
+                        f"duration={duration:.3f}s | error={str(error)[:500]}"
+                    )
+                else:
+                    logger.error(
+                        f"MCP TOOL ERROR WITHOUT START | "
+                        f"request_id={request_id} | "
+                        f"tool={tool_name} | run_id={run_id} | "
+                        f"error={str(error)[:500]}"
+                    )
 
-                elif event_type == "on_tool_error":
-                    run = tool_runs.pop(run_id, None)
-                    error = data.get("error")
-                    if run:
-                        duration = (time.perf_counter() - run["start_time"])
-                        attributes = {
-                            "mcp.tool.name": run["tool_name"],
-                            "mcp.tool.status": "error"}
+            elif event_type == "on_chat_model_stream":
+                chunk = data.get("chunk")
+                content = getattr(chunk, "content", None)
 
-                        run["span"].set_attribute(
-                            "mcp.tool.status",
-                            "error")
+                if content and not first_token_logged:
+                    first_token_logged = True
+                    log_stage(
+                        request_id or "unknown",
+                        "first_model_token",
+                        agent_started
+                    )
 
-                        if error:
-                            run["span"].set_attribute(
-                                "error.message",
-                                str(error)[:500])
-
-                            if isinstance(error, BaseException):
-                                run["span"].record_exception(error)
-
-                        run["span"].set_status(
-                            Status(StatusCode.ERROR))
-                        run["span"].end()
-                        tool_calls.add(1, attributes)
-                        tool_errors.add(1, attributes)
-                        tool_duration.record(
-                            duration, attributes)
-
-                        logger.error(
-                            f"MCP TOOL ERROR: "
-                            f"{run['tool_name']} - {error}")
-
-                elif event_type == "on_chat_model_stream":
-                    content = data["chunk"].content
-
-                    if isinstance(content, str):
-                        if content:
-                            yield content
-                    elif isinstance(content, list):
-                        for block in content:
-                            if (
-                                isinstance(block, dict)
-                                and block.get("type") == "text"
-                                and block.get("text")
-                            ):
-                                yield block["text"]
+                if isinstance(content, str):
+                    if content:
+                        yield content
+                elif isinstance(content, list):
+                    for block in content:
+                        if (
+                            isinstance(block, dict)
+                            and block.get("type") == "text"
+                            and block.get("text")
+                        ):
+                            yield block["text"]
 
     except asyncio.TimeoutError:
-        logger.warning(f"Agent timeout setelah {TIMEOUT_SECONDS} detik")
-        yield ("\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu")
+        logger.warning(
+            f"AGENT TIMEOUT | request_id={request_id} | "
+            f"timeout={TIMEOUT_SECONDS}s"
+        )
+        yield "\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu"
 
     except Exception as e:
         if "recursion limit" in str(e).lower():
-            logger.warning("PERINGATAN SISTEM: Agent dihentikan karena recursion limit")
+            logger.warning(
+                f"AGENT RECURSION LIMIT | request_id={request_id}"
+            )
             yield (
                 "\n\nSistem Memotong Eksekusi Paksa:\n"
-                "Proses analisis data terlalu panjang dan berputar-putar")
-
+                "Proses analisis data terlalu panjang dan berputar-putar"
+            )
         else:
-            logger.error(f"Sistem Error: {str(e)}")
+            logger.exception(
+                f"AGENT ERROR | request_id={request_id}"
+            )
             yield f"\n\n[Sistem Error]: {str(e)}"
 
     finally:
         for run_id, run in list(tool_runs.items()):
-            duration = (time.perf_counter() - run["start_time"])
-
+            duration = time.perf_counter() - run["start_time"]
             attributes = {
                 "mcp.tool.name": run["tool_name"],
-                "mcp.tool.status": "interrupted"}
+                "mcp.tool.status": "interrupted"
+            }
 
             run["span"].set_attribute(
-                "mcp.tool.status", "interrupted")
+                "mcp.tool.status",
+                "interrupted"
+            )
             run["span"].end()
-
             tool_calls.add(1, attributes)
-            tool_duration.record(
-                duration, attributes)
+            tool_duration.record(duration, attributes)
 
             logger.warning(
-                f"MCP TOOL INTERRUPTED: "
-                f"{run['tool_name']} "
-                f"(Durasi: {duration:.2f} detik)")
+                f"MCP TOOL INTERRUPTED | request_id={request_id} | "
+                f"tool={run['tool_name']} | run_id={run_id} | "
+                f"duration={duration:.3f}s"
+            )
 
         tool_runs.clear()
 
+        log_stage(
+            request_id or "unknown",
+            "agent_stream",
+            agent_started
+        )
+
+
 thread_id_var: ContextVar[str] = ContextVar("thread_id_var")
+
 
 @app.post("/chat")
 async def chat_endpoint(
@@ -418,6 +537,13 @@ async def chat_endpoint(
     message: str = Form(...),
     file: UploadFile | None = File(None)
 ):
+    request_id = uuid.uuid4().hex[:12]
+    request_started = time.perf_counter()
+
+    logger.info(
+        f"REQUEST START | request_id={request_id} | "
+        f"method={request.method} | path={request.url.path}"
+    )
 
     thread_id = request.cookies.get("thread_id")
     is_new_thread = False
@@ -426,19 +552,40 @@ async def chat_endpoint(
         thread_id = f"thread_{uuid.uuid4().hex}"
         is_new_thread = True
 
+    stage_started = time.perf_counter()
     if validate_prompt_injection(message):
-        logger.error("Prompt injection terdeteksi")
+        log_stage(
+            request_id,
+            "prompt_injection_validation",
+            stage_started,
+            status="rejected"
+        )
+        logger.error(
+            f"PROMPT INJECTION DETECTED | request_id={request_id}"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection")
+            detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection"
+        )
+
+    log_stage(
+        request_id,
+        "prompt_injection_validation",
+        stage_started
+    )
 
     file_bytes = None
     file_content = ""
     saved_filename = None
+    original_filename = None
+
     ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls", ".pdf", ".docx"}
     MAX_FILE_SIZE = 20 * 1024 * 1024
     MAX_CONTENT_LENGTH = 15000
+
     if file and file.filename:
+        file_stage_started = time.perf_counter()
+
         try:
             original_filename = Path(
                 file.filename.replace("\\", "/")
@@ -446,58 +593,130 @@ async def chat_endpoint(
 
             ext = Path(original_filename).suffix.lower()
             if ext not in ALLOWED_EXTENSIONS:
+                log_stage(
+                    request_id,
+                    "extract_file",
+                    file_stage_started,
+                    status="rejected",
+                    reason="unsupported_extension"
+                )
                 raise HTTPException(
                     status_code=400,
-                    detail="Format file tidak didukung")
+                    detail="Format file tidak didukung"
+                )
 
             file_bytes = await file.read(MAX_FILE_SIZE + 1)
             if len(file_bytes) > MAX_FILE_SIZE:
+                log_stage(
+                    request_id,
+                    "extract_file",
+                    file_stage_started,
+                    status="rejected",
+                    reason="file_too_large",
+                    file_size=len(file_bytes)
+                )
                 raise HTTPException(
                     status_code=413,
-                    detail="Ukuran file maksimal 20 MB")
+                    detail="Ukuran file maksimal 20 MB"
+                )
 
-            try:
-                file_content = extract_file_content(file_bytes, original_filename)
-                file_content =  file_content[:MAX_CONTENT_LENGTH]
+            file_content = extract_file_content(
+                file_bytes,
+                original_filename
+            )
+            file_content = file_content[:MAX_CONTENT_LENGTH]
 
-            except Exception:
-                logger.exception("Gagal mengekestrak isi file")
-                raise HTTPException(
-                    status_code=422,
-                    detail="Isi file tidak dapat dibaca atau format file tidak valid")
+            log_stage(
+                request_id,
+                "extract_file",
+                file_stage_started,
+                filename=original_filename,
+                file_size=len(file_bytes),
+                extracted_chars=len(file_content)
+            )
+
+        except HTTPException:
+            raise
+        except Exception:
+            log_stage(
+                request_id,
+                "extract_file",
+                file_stage_started,
+                status="error"
+            )
+            logger.exception(
+                f"FILE EXTRACTION ERROR | request_id={request_id}"
+            )
+            raise HTTPException(
+                status_code=422,
+                detail="Isi file tidak dapat dibaca atau format file tidak valid"
+            )
         finally:
             await file.close()
 
+    # 3. Ambil agent dan conversation history
     agent = get_active_agent()
+    config = {"configurable": {"thread_id": thread_id}}
 
-    config = {
-        "configurable": {"thread_id": thread_id}}
-
+    history_started = time.perf_counter()
     try:
         snapshot = await agent.aget_state(config)
         previous_messages = snapshot.values.get("messages", [])
-        recent_history = format_recent_history(previous_messages, limit=5)
-        
-    except Exception:
-        logger.exception("Gagal mengambil conversation history")
+        recent_history = format_recent_history(
+            previous_messages,
+            limit=5
+        )
 
+        log_stage(
+            request_id,
+            "get_history",
+            history_started,
+            total_messages=len(previous_messages),
+            history_length=len(recent_history)
+        )
+
+    except Exception:
+        log_stage(
+            request_id,
+            "get_history",
+            history_started,
+            status="error"
+        )
+        logger.exception(
+            f"GET HISTORY ERROR | request_id={request_id}"
+        )
         raise HTTPException(
             status_code=503,
-            detail="Riwayat percakapan tidak dapat diperiksa")
+            detail="Riwayat percakapan tidak dapat diperiksa"
+        )
 
+    # 4. Susun input guardrail
     topic_input = f"""
-    CONVERSATION HISTORY:
-    {recent_history if recent_history else "Belum ada riwayat percakapan."}
+CONVERSATION HISTORY:
+{recent_history if recent_history else "Belum ada riwayat percakapan."}
 
-    CURRENT USER MESSAGE:
-    {message}
+CURRENT USER MESSAGE:
+{message}
 
-    FILE CONTENT:
-    {file_content if file_content else "Tidak ada file yang diunggah."}
-    """
+FILE CONTENT:
+{file_content if file_content else "Tidak ada file yang diunggah."}
+"""
 
+    log_stage(
+        request_id,
+        "build_guardrail_input",
+        history_started,
+        input_length=len(topic_input)
+    )
+
+    # 5. Check guardrail
+    guardrail_started = time.perf_counter()
     try:
-        topic_probability = await asyncio.to_thread(check_topic, topic_input)
+        topic_probability = await asyncio.to_thread(
+            check_topic,
+            topic_input
+        )
+
         if (
             isinstance(topic_probability, bool)
             or not isinstance(topic_probability, (int, float))
@@ -506,39 +725,114 @@ async def chat_endpoint(
         ):
             raise ValueError("Invalid topic probability")
 
+        guardrail_status = (
+            "success" if topic_probability >= 0.50 else "rejected"
+        )
+        log_stage(
+            request_id,
+            "check_guardrail",
+            guardrail_started,
+            status=guardrail_status,
+            probability=f"{topic_probability:.4f}",
+            input_length=len(topic_input)
+        )
+
     except Exception:
-        logger.exception("Topic Control Error")
+        log_stage(
+            request_id,
+            "check_guardrail",
+            guardrail_started,
+            status="error"
+        )
+        logger.exception(
+            f"GUARDRAIL ERROR | request_id={request_id}"
+        )
         raise HTTPException(
             status_code=503,
-            detail="Pemeriksaan topik sedang mengalami gangguan")
+            detail="Pemeriksaan topik sedang mengalami gangguan"
+        )
 
+    # 6. Simpan file hanya jika guardrail lolos
     if topic_probability >= 0.50 and file_bytes is not None:
-        saved_filename = (f"{uuid.uuid4().hex}_{original_filename}")
-        file_path = DATA_DIR / saved_filename
-        with open(file_path, "wb") as buffer:
-            buffer.write(file_bytes)
+        save_started = time.perf_counter()
 
+        saved_filename = (
+            f"{uuid.uuid4().hex}_{original_filename}"
+        )
+        file_path = DATA_DIR / saved_filename
+
+        try:
+            with open(file_path, "wb") as buffer:
+                buffer.write(file_bytes)
+
+            log_stage(
+                request_id,
+                "save_uploaded_file",
+                save_started,
+                file_size=len(file_bytes)
+            )
+        except Exception:
+            log_stage(
+                request_id,
+                "save_uploaded_file",
+                save_started,
+                status="error"
+            )
+            logger.exception(
+                f"SAVE FILE ERROR | request_id={request_id}"
+            )
+            raise HTTPException(
+                status_code=500,
+                detail="File gagal disimpan"
+            )
+
+    # 7. Stream jawaban agent
     async def safe_stream_wrapper():
         token = thread_id_var.set(thread_id)
+        stream_started = time.perf_counter()
+
+        logger.info(
+            f"AGENT START | request_id={request_id} | "
+            f"thread_id={thread_id}"
+        )
+
         try:
             async for chunk in stream_agent_response(
                 user_input=message,
                 thread_id=thread_id,
                 filename=saved_filename,
-                topic_probability=topic_probability
+                topic_probability=topic_probability,
+                request_id=request_id
             ):
                 yield chunk
 
         except Exception:
-            logger.exception("Stream Error")
+            logger.exception(
+                f"STREAM ERROR | request_id={request_id}"
+            )
             yield "\n\n[Sistem Error]: Terjadi kesalahan saat memproses permintaan"
 
         finally:
+            log_stage(
+                request_id,
+                "agent_stream_wrapper",
+                stream_started
+            )
+            log_stage(
+                request_id,
+                "total_request",
+                request_started
+            )
+
+            logger.info(
+                f"REQUEST FINISHED | request_id={request_id}"
+            )
             thread_id_var.reset(token)
 
     streaming_response = StreamingResponse(
         safe_stream_wrapper(),
-        media_type="text/event-stream")
+        media_type="text/event-stream"
+    )
 
     if is_new_thread:
         streaming_response.set_cookie(
@@ -546,11 +840,16 @@ async def chat_endpoint(
             value=thread_id,
             httponly=True,
             samesite="lax",
-            max_age=60 * 60 * 24 * 3)
+            max_age=60 * 60 * 24 * 3
+        )
 
-    logger.info(f"THREAD ID: {thread_id}")
+    logger.info(
+        f"THREAD ID | request_id={request_id} | "
+        f"thread_id={thread_id}"
+    )
 
     return streaming_response
+
 
 # @app.get("/resume-halaman")
 # async def resume_halaman(
