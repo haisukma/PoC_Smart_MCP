@@ -28,7 +28,7 @@ async def get_isolator_change_df() -> pd.DataFrame:
 
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(60),
-        limits=httpx.limits(
+        limits=httpx.Limits(
             max_connections=max_concurrent,
             max_keepalive_connections=max_concurrent
         )

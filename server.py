@@ -13,6 +13,12 @@ from tools.thermovisi_report_tool import register_thermovisi_report_tools
 from tools.isolator_clean_report_tool import register_isolator_clean_report_tools
 from tools.isolator_change_tool import register_isolator_change_tools
 from tools.isolator_change_report_tool import register_isolator_change_report_tools
+from tools.sktt_detail_tool import register_sktt_detail_tools
+from tools.sktt_report_tool import register_sktt_report_tools
+from tools.cui_detail_tool import register_cui_detail_tools
+from tools.jumper_gsw_detail_tool import register_jumper_gsw_detail_tools
+from tools.jumper_gsw_report_tool import register_jumper_gsw_report_tools
+from tools.arching_horn_detail_tool import register_arching_horn_detail_tools
 
 mcp = FastMCP("Multi Data MCP Server")
 
@@ -30,6 +36,12 @@ register_thermovisi_report_tools(mcp)
 register_isolator_clean_report_tools(mcp)
 register_isolator_change_tools(mcp)
 register_isolator_change_report_tools(mcp)
+register_sktt_detail_tools(mcp)
+register_sktt_report_tools(mcp)
+register_cui_detail_tools(mcp)
+register_jumper_gsw_detail_tools(mcp)
+register_jumper_gsw_report_tools(mcp)
+register_arching_horn_detail_tools(mcp)
 
 if __name__ == "__main__":
     mcp.run()

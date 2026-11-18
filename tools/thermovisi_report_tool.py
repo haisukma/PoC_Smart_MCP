@@ -25,7 +25,7 @@ def register_thermovisi_report_tools(mcp):
 
         DataFrame yang tersedia:
         - df_realisasi: Data thermovisi berdasarkan realisasi
-        - df_target_upt Data thermovisi berdasarkan target UPT
+        - df_target_upt: Data thermovisi berdasarkan target UPT
         - df_kondisi: Data thermovisi berdasarkan kondisi
         - df_rekomendasi: Data thermovisi berdasarkan rekomendasi
 
