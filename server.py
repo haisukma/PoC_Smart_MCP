@@ -18,10 +18,12 @@ from tools.jumper_gsw_detail_tool import register_jumper_gsw_detail_tools
 from tools.jumper_gsw_report_tool import register_jumper_gsw_report_tools
 from tools.arching_horn_detail_tool import register_arching_horn_detail_tools
 from tools.lightning_detail_tool import register_lightning_detail_tools
+from tools.lightning_report_tool import register_lightning_report_tools
 from tools.arching_horn_report_tool import register_arching_horn_report_tools
 from tools.layang_detail_tool import register_layang_detail_tools
 from tools.layang_report_tool import register_layang_report_tools
 from tools.protection_angle_detail_tool import register_protection_angle_detail_tools
+from tools.protection_angle_report_tool import register_protection_angle_report_tools
 from tools.vulnerabilities_detail_tool import register_vulnerabilities_detail_tools
 from tools.vulnerabilities_report_tool import register_vulnerabilities_report_tools
 from tools.lingkungan_detail_tool import register_lingkungan_detail_tools
@@ -34,6 +36,7 @@ from tools.pondasi_pole_report_tool import register_pondasi_pole_report_tools
 from tools.pondasi_leveling_detail_tool import register_pondasi_leveling_detail_tools
 from tools.corona_detail_tool import register_corona_detail_tools
 from tools.corona_report_tool import register_corona_report_tools
+from tools.verticality_detail_tool import register_verticality_detail_tools
 
 mcp = FastMCP("Multi Data MCP Server")
 
@@ -72,6 +75,9 @@ register_pondasi_pole_report_tools(mcp)
 register_pondasi_leveling_detail_tools(mcp)
 register_corona_detail_tools(mcp)
 register_corona_report_tools(mcp)
+register_lightning_report_tools(mcp)
+register_protection_angle_report_tools(mcp)
+register_verticality_detail_tools(mcp)
 
 if __name__ == "__main__":
     mcp.run()
