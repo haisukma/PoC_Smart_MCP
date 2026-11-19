@@ -5,6 +5,7 @@ import numpy as np
 import json
 import datetime
 from services_mcp.layang_report_service import get_layang_report_df
+
 __LAYANG_REPORT_DF: pd.DataFrame = None
 
 async def _get_cached_layang_report_df() -> dict[str, pd.DataFrame]:

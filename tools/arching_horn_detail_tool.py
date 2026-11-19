@@ -7,7 +7,7 @@ from services_mcp.arching_horn_detail_service import get_arching_horn_detail_df
 ARCHING_HORN_DETAIL_DF = None
 
 async def _get_cached_arching_horn_detail_df() -> pd.DataFrame:
-    global TARCHING_HORN_DETAIL_DF
+    global ARCHING_HORN_DETAIL_DF
 
     if ARCHING_HORN_DETAIL_DF is None or ARCHING_HORN_DETAIL_DF.empty:
         ARCHING_HORN_DETAIL_DF = await get_arching_horn_detail_df()
@@ -26,12 +26,12 @@ def register_arching_horn_detail_tools(mcp):
         """
 
         try:
-            df_thermovisi = await _get_cached_arching_horn_detail_df()
-            if df_thermovisi.empty:
+            df_arching_horn = await _get_cached_arching_horn_detail_df()
+            if df_arching_horn.empty:
                 return "Data arching horn report kosong"
 
             local_vars = {
-                "df": df_thermovisi,
+                "df": df_arching_horn,
                 "pd": pd
             }
 

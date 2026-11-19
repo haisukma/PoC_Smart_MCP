@@ -3,7 +3,8 @@ import contextlib
 import pandas as pd
 import numpy as np
 from services_mcp.protection_angle_detail_service import get_protection_angle_detail_df
-THERMOVISI_DETAIL_DF = None
+
+PROTECTION_ANGLE_DETAIL_DF = None
 
 async def _get_cached_protection_angle_detail_df() -> pd.DataFrame:
     global PROTECTION_ANGLE_DETAIL_DF

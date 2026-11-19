@@ -13,7 +13,7 @@ async def get_arching_horn_report_df() -> dict[str, pd.DataFrame]:
     Mengambil data LAPORAN AGREGASI atau EVALUASI ARCHING HORN dari API
     """
 
-    url = f"{API_URL}/arching-horn"
+    url = f"{API_URL}/arching-horn-report"
     headers = {
         "Authorization": f"Bearer {API_TOKEN}",
         "Accept": "application/json"

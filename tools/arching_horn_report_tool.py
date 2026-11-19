@@ -25,7 +25,7 @@ def register_arching_horn_report_tools(mcp):
 
         DataFrame yang tersedia:
         - df_realization_tower: Data arching horn total realisasi tower per UPT
-        - df_length_evaluaation_s: Data evaluasi panjang S pada arching horn
+        - df_length_evaluation_s: Data evaluasi panjang S pada arching horn
         - df_length_evaluation_d: Data evaluasi panjang D pada arching horn
         - df_length_evaluation_sd: Data evaluasi panjang S dan D
 
@@ -39,7 +39,7 @@ def register_arching_horn_report_tools(mcp):
 
             local_vars = {
                 "df_realization_tower": arching_horn_report_data["realization_tower"],
-                " df_length_evaluaation_s": arching_horn_report_data["length_evaluation_s"],
+                "df_length_evaluation_s": arching_horn_report_data["length_evaluation_s"],
                 "df_length_evaluation_d": arching_horn_report_data["length_evaluation_d"],
                 "df_length_evaluation_sd": arching_horn_report_data["length_evaluation_sd"],
                 "pd": pd}
