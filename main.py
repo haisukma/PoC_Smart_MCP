@@ -210,7 +210,6 @@ async def iterate_with_timeout(async_iterable, timeout):
         if aclose:
             await aclose()
 
-
 async def stream_agent_response(
     user_input: str,
     thread_id: str,
@@ -247,8 +246,7 @@ async def stream_agent_response(
         messages.append((
             "system",
             f"[INFO SISTEM]: Pengguna mengunggah file '{filename}'.\n"
-            f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"
-        ))
+            f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"))
 
     messages.append(("user", user_input))
     inputs = {"messages": messages}
@@ -295,17 +293,6 @@ async def stream_agent_response(
                     f"tool={tool_name} | run_id={run_id} | "
                     f"input_keys={input_keys}")
 
-            # elif event_type == "on_chat_model_start":
-            #     model_run_id = str(event.get("run_id", ""))
-
-            #     model_runs[model_run_id] = {
-            #         "start_time": time.perf_counter(),
-            #         "model_name": event.get("metadata", {}).get("ls_model_name", "unknown")}
-
-            #     logger.info(
-            #         f"LLM START | request_id={request_id} | "
-            #         f"run_id={model_run_id} | "
-            #         f"model={model_runs[model_run_id]['model_name']}")
             elif event_type == "on_chat_model_start":
                 model_run_id = str(event.get("run_id", ""))
 
@@ -321,17 +308,6 @@ async def stream_agent_response(
                     f"LLM START | request_id={request_id} | "
                     f"run_id={model_run_id} | model={model_name}")
 
-            # elif event_type == "on_chat_model_end":
-            #     model_run_id = str(event.get("run_id", ""))
-            #     run = model_runs.pop(model_run_id, None)
-
-            #     if run:
-            #         duration = time.perf_counter() - run["start_time"]
-
-            #         logger.info(
-            #             f"LLM END | request_id={request_id} | "
-            #             f"model={run['model_name']} | "
-            #             f"duration={duration:.3f}s")
             elif event_type == "on_chat_model_end":
                 model_run_id = str(event.get("run_id", ""))
                 run = model_runs.pop(model_run_id, None)
@@ -612,15 +588,13 @@ async def chat_endpoint(
         guardrail_input_started,
         input_length=len(topic_input),
         message_length=len(message),
-        file_content_length=len(file_content)
-    )
+        file_content_length=len(file_content))
 
     guardrail_started = time.perf_counter()
     try:
         topic_probability = await asyncio.to_thread(
             check_topic,
-            topic_input
-        )
+            topic_input)
 
         if (
             isinstance(topic_probability, bool)
@@ -630,9 +604,7 @@ async def chat_endpoint(
         ):
             raise ValueError("Invalid topic probability")
 
-        guardrail_status = (
-            "success" if topic_probability >= 0.50 else "rejected"
-        )
+        guardrail_status = ("success" if topic_probability >= 0.50 else "rejected")
 
         log_stage(
             request_id,
@@ -640,24 +612,17 @@ async def chat_endpoint(
             guardrail_started,
             status=guardrail_status,
             probability=f"{topic_probability:.4f}",
-            input_length=len(topic_input)
-        )
+            input_length=len(topic_input))
 
     except Exception:
         log_stage(
             request_id,
             "check_guardrail",
             guardrail_started,
-            status="error"
-        )
+            status="error")
 
-        logger.exception(
-            f"GUARDRAIL ERROR | request_id={request_id}"
-        )
-        raise HTTPException(
-            status_code=503,
-            detail="Pemeriksaan topik sedang mengalami gangguan"
-        )
+        logger.exception(f"GUARDRAIL ERROR | request_id={request_id}")
+        raise HTTPException(status_code=503, detail="Pemeriksaan topik sedang mengalami gangguan")
 
     if topic_probability >= 0.50 and file_bytes is not None:
         save_started = time.perf_counter()
@@ -740,65 +705,6 @@ async def chat_endpoint(
         f"thread_id={thread_id}")
 
     return streaming_response
-
-
-# @app.get("/resume-halaman")
-# async def resume_halaman(
-#     request: Request,
-#     message: str = Form(...)
-# ):
-#     thread_id = request.cookies.get("thread_id")
-#     is_new_thread = False
-
-#     if not thread_id:
-#         thread_id = f"thread_{uuid.uuid4().hex}"
-#         is_new_thread = True
-
-#     if validate_prompt_injection(message):
-#         logger.error("Prompt injection terdeteksi")
-#         raise HTTPException(
-#             status_cod=status.HTTP_400_BAD_REQUEST,
-#             detail="Permintaan ditolak: Terdeteksi indikasi Prompt Injection")
-
-#     topic_input = f"""
-#         USER_MESSAGE: {message}
-#     """
-
-#     try:
-#         topic_probability = await asyncio.to_thread(check_topic,topic_input)
-#         if (
-#             isinstance(topic_probability, bool)
-#             or not isinstance(topic_probability, (int, float))
-#             or not math.isfinite(topic_probability)
-#             or not 0 <= topic_probability <= 1
-#         ):
-#             raise ValueError("Invalid topic probability")
-
-#     except Exception:
-#         logger.exception("Topic Control Error")
-#         raise HTTPException(
-#             status_code=503,
-#             detail="Pemeriksaan topik sedang mengalami gangguan")
-
-#     if topic_probability >= 0.50:
-#         return
-
-#     async def safe_stream_wrapper():
-#         token = thread_id_var.set(thread_id)
-#         try:
-#             async for chunk in stream_agent_response(
-#                 user_input=message,
-#                 thread_id=thread_id,
-#                 topic_probability=topic_probability
-#             ):
-#                 yield chunk
-
-#         except Exception:
-#             logger.exception("Stream Error")
-#             yield "\n\n[Sistem Error]: Terjadi kesalahan saat memproses permintaan"
-
-#         finally:
-#             thread_id_var.reset(token)
 
 @app.get("/")
 def read_root():

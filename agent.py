@@ -4,6 +4,7 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 # from langchain_ollama import ChatOllama
 # from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from contextlib import AsyncExitStack
 from langgraph.prebuilt import create_react_agent
 from langchain_core.messages import SystemMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
@@ -85,8 +86,6 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 </system_instructions>
 """
 
-from contextlib import AsyncExitStack
-
 exit_stack: AsyncExitStack | None = None
 agent_executor = None
 
@@ -109,16 +108,16 @@ async def init_agent():
         )
 
         checkpointer = await exit_stack.enter_async_context(
-            AsyncPostgresSaver.from_conn_string(DB_URL)
-        )
+            AsyncPostgresSaver.from_conn_string(DB_URL))
+        
         await checkpointer.setup()
 
         agent_executor = create_react_agent(
             model=llm,
             tools=mcp_tools,
             prompt=SystemMessage(content=SYSTEM_PROMPT),
-            checkpointer=checkpointer
-        )
+            checkpointer=checkpointer)
+        
     except Exception:
         await exit_stack.aclose()
         exit_stack = None
@@ -133,8 +132,6 @@ async def shutdown_agent():
 
 def get_active_agent():
     if agent_executor is None:
-        raise RuntimeError(
-            "Agent belum diinisialisasi oleh FastAPI lifespan!"
-        )
+        raise RuntimeError("Agent belum diinisialisasi oleh FastAPI lifespan!")
 
     return agent_executor
