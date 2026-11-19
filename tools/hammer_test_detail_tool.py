@@ -19,8 +19,8 @@ def register_hammer_test_detail_tools(mcp):
     @mcp.tool()
     async def execute_hammer_test_detail_analysis(code: str) -> str:
         """
-        Mengambil data mentah (DataFrame) DETAIL PENGUJIAN KEKUATAN BETON.
-        WAJIB dipanggil PERTAMA kali untuk pertanyaan detail pengujian beton, 
+        Mengambil data mentah (DataFrame) DETAIL PENGUJIAN KEKUATAN BETON/HAMMER TEST TOWER DAN PONDASI.
+        WAJIB dipanggil PERTAMA kali untuk pertanyaan detail pengujian kekuatan beton/hammer test dan pondasi, 
         sebelum memanggil `execute_hammer_test_detail_analysis`
         """
 

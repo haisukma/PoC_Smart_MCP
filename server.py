@@ -27,6 +27,7 @@ from tools.vulnerabilities_report_tool import register_vulnerabilities_report_to
 from tools.lingkungan_detail_tool import register_lingkungan_detail_tools
 from tools.lingkungan_report_tool import register_lingkungan_report_tools
 from tools.hammer_test_detail_tool import register_hammer_test_detail_tools
+from tools.pondasi_lattice_detail_tool import register_pondasi_lattice_detail_tools
 
 mcp = FastMCP("Multi Data MCP Server")
 
@@ -58,6 +59,7 @@ register_vulnerabilities_report_tools(mcp)
 register_lingkungan_detail_tools(mcp)
 register_lingkungan_report_tools(mcp)
 register_hammer_test_detail_tools(mcp)
+register_pondasi_lattice_detail_tools(mcp)
 
 if __name__ == "__main__":
     mcp.run()

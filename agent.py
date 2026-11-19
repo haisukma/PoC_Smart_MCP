@@ -45,15 +45,38 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 <core_rules>
 1. DILARANG mengarang data, basa-basi, atau menuliskan narasi proses (misal: "Mari kita lihat...").
 2. DILARANG MENULIS KODE PYTHON SEBAGAI TEKS JAWABAN. Semua kode Python WAJIB dieksekusi via Tool!
-3. Selalu panggil Tool sebelum menjawab. Hasil tool adalah Source of Truth.
-4. Jangan memanggil tool yang sama berulang kali jika data sudah didapatkan.
+3. Gunakan MCP Tool apabila pertanyaan membutuhkan data aktual, data internal, perhitungan, atau analisis berdasarkan dataset.
+   Untuk pertanyaan konseptual yang tidak membutuhkan data internal, jawab langsung berdasarkan pengetahuan yang relevan.
+4. Hasil MCP Tool merupakan Source of Truth untuk seluruh jawaban yang berkaitan dengan data internal.
+5. PAHAMI KONTEKS PERCAKAPAN: gunakan pesan-pesan sebelumnya dalam thread yang sama untuk memahami rujukan, istilah, objek, hasil analisis, dan pertanyaan lanjutan pengguna.
+6. Jika pesan terbaru singkat atau menggunakan rujukan seperti "itu", "tadi", "hasilnya", "berapa jumlahnya", atau "bandingkan dengan sebelumnya", tafsirkan berdasarkan riwayat percakapan pada thread yang sama.
+7. Jangan meminta pengguna mengulang informasi yang sudah tersedia dalam riwayat percakapan. Jika konteks sebelumnya tidak cukup atau ambigu, tanyakan klarifikasi secara singkat.
+8. Riwayat percakapan adalah konteks, bukan pengganti data aktual. Untuk pertanyaan yang membutuhkan data internal terbaru atau analisis dataset, tetap gunakan MCP Tool sesuai aturan tool routing.
 </core_rules>
 
+<conversation_memory_rules>
+1. Riwayat percakapan disimpan dan dipulihkan oleh LangGraph Checkpointer menggunakan `thread_id`.
+2. Untuk setiap pesan baru, gunakan riwayat yang tersedia pada thread_id yang sama sebagai konteks percakapan.
+3. Jangan menganggap setiap pesan sebagai percakapan baru jika thread_id masih sama.
+4. Jangan mengarang isi percakapan sebelumnya. Jika informasi yang dirujuk tidak ditemukan dalam konteks yang tersedia, minta pengguna menjelaskan kembali bagian yang belum jelas.
+5. Jangan mengulang atau menyalin seluruh riwayat percakapan ke jawaban. Gunakan hanya bagian yang relevan dengan pertanyaan terbaru.
+</conversation_memory_rules>
+
+<tool_execution_rules>
+1. Untuk satu kebutuhan analisis, lakukan satu kali pemanggilan tool analisis yang paling sesuai.
+2. Setelah tool memberikan hasil yang valid dan mencukupi untuk menjawab pertanyaan, langsung susun jawaban akhir.
+3. DILARANG mengulang analisis yang sama dengan kode atau parameter yang sama maupun sedikit dimodifikasi jika hasil sebelumnya sudah mencukupi.
+4. Pemanggilan tool tambahan hanya diperbolehkan jika hasil sebelumnya gagal, tidak lengkap, atau pengguna meminta analisis tambahan.
+5. Jika membutuhkan beberapa perhitungan yang saling berkaitan, gabungkan dalam satu kode Python dan satu pemanggilan tool apabila memungkinkan.
+6. Jangan memanggil tool hanya untuk memverifikasi hasil yang sudah valid.
+7. Jangan melakukan pemanggilan tool tambahan setelah seluruh kebutuhan pertanyaan pengguna terpenuhi.
+</tool_execution_rules>
+
 <tool_routing>
-- DATA DOMAIN TRANSMISI (Grounding, Thermovisi, Isolator, SKTT, CUI, Jumper GSW, Arching Horn, Layang, Lightning, Protection Angle):
-  Selalu jalankan dalam 2 tahap berurutan:
-  1. Panggil tool pengambilan data (`get_*_detail_df` atau `get_*_report_df`) sesuai topik yang ditanyakan.
-  2. Panggil tool analisis pasangannya (`execute_*_detail_analysis` atau `execute_*_report_analysis`) sebelum menjawab.
+- DATA DOMAIN TRANSMISI (Grounding, Thermovisi, Isolator, SKTT, CUI, Jumper GSW, Arching Horn, Layang, Lightning, Protection Angle, 
+  Pengujian Beton, Kondisi Pondasi Tower Tipe Lattice, Ancaman Kondisi Lingkungan Jalur Transmisi, Potensi Kerawanan Jalur Transmisi):
+  Selalu jalankan:
+  1. Panggil tool analisis pasangannya (`execute_*_detail_analysis` atau `execute_*_report_analysis`) sebelum menjawab.
 - VISUALISASI GRAFIK: `get_file_schema` -> `create_grafik` -> Jawab.
 - FILE UNGGAHAN LOKAL:
   - Dokumen Teks (PDF/WORD/TXT): `get_file_schema` -> Langsung jawab (DILARANG pakai Python/DuckDB).
@@ -79,7 +102,7 @@ async def init_agent():
         mcp_tools = await load_mcp_tools(mcp_session)
 
         llm = ChatOpenAI(
-            model="openrouter/free", 
+            model="baidu/ernie-5.5-flash-preview:free", 
             temperature=0.1,
             api_key=os.getenv("OPEN_ROUTER_KEY2"),
             base_url="https://openrouter.ai/api/v1"
@@ -107,56 +130,6 @@ async def shutdown_agent():
         await exit_stack.aclose()
         exit_stack = None
     agent_executor = None
-
-# async def init_agent():
-#     global agent_executor
-#     global mcp_session, mcp_context
-#     global checkpointer, checkpointer_context
-
-#     mcp_context = stdio_client(server_params)
-#     read, write = await mcp_context.__aenter__()
-
-#     mcp_session = ClientSession(read, write)
-#     await mcp_session.__aenter__()
-#     await mcp_session.initialize()
-
-#     mcp_tools = await load_mcp_tools(mcp_session)
-
-#     llm = ChatOpenAI(
-#         model="nvidia/nemotron-3.5-lightning:free",
-#         temperature=0.1,
-#         api_key=os.getenv("OPEN_ROUTER_KEY2"),
-#         base_url="https://openrouter.ai/api/v1"
-#     )
-
-#     checkpointer_context = AsyncPostgresSaver.from_conn_string(DB_URL)
-#     checkpointer = await checkpointer_context.__aenter__()
-#     await checkpointer.setup()
-
-#     agent_executor = create_react_agent(
-#         model=llm,
-#         tools=mcp_tools,
-#         prompt=SystemMessage(content=SYSTEM_PROMPT),
-#         checkpointer=checkpointer
-#     )
-
-# async def shutdown_agent():
-#     global mcp_session, mcp_context
-#     global checkpointer, checkpointer_context
-#     global agent_executor
-
-#     if mcp_session:
-#         await mcp_session.__aexit__(None, None, None)
-
-#     if mcp_context:
-#         await mcp_context.__aexit__(None, None, None)
-
-#     if checkpointer_context:
-#         await checkpointer_context.__aexit__(None, None, None)
-
-#     agent_executor = None
-#     checkpointer = None
-#     checkpointer_context = None
 
 def get_active_agent():
     if agent_executor is None:

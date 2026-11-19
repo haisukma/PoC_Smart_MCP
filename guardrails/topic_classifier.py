@@ -116,13 +116,17 @@ def check_topic(user_message: str) -> float:
                     - Memfilter data berdasarkan nama jalur,tower, penghantar, lokasi, atau periode
                     - Menganalisis tren dan anomali data transmisi
 
-                    4. SAPAAN:
-                    - Hi, Hello, atau Hai
-                    - Selamat pagi, sore, siang malam
-                    - Tes
-                    - Apa kabar?
-                    - Permisi
-                    - Salam
+                    4. SAPAAN DAN PERCAKAPAN UMUM:
+                    - Sapaan singkat seperti:
+                    Hi, Hai, Hello, Halo, Hey
+                    - Salam berdasarkan waktu:
+                    Selamat pagi, Selamat siang, Selamat sore, Selamat malam
+                    - Sapaan informal:
+                    Apa kabar?, Permisi, Tes, Pagi, Siang, Sore
+                    - Ucapan pembuka percakapan:
+                    Boleh tanya?, Bisa bantu?, Ada yang bisa dibantu?
+                    - Ucapan terima kasih dan penutup percakapan:
+                    Terima kasih, Makasih, Thanks, Sampai jumpa
 
                     ATURAN PENTING:
 
@@ -145,10 +149,10 @@ def check_topic(user_message: str) -> float:
                 """,
                 "criteria": {
                     "true": """
-                        Pesan, file, dan histry chat membahas aset/item, operasional, inspeksi,
+                        Pesan, file, dan history chat yang membahas transmisi baik item atau yang lainnya, operasional, inspeksi,
                         pemeliharaan, kondisi, atau pengolahan dan
                         analisis data yang berkaitan dengan transmisi
-                        tenaga listrik
+                        tenaga listrik, serta sapaan, salam, ucapan terimakasih
                     """,
                     "false": """
                         Pesan, file, dan history chat tidak memiliki hubungan dengan aset/item,
