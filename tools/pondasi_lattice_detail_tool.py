@@ -19,9 +19,10 @@ def register_pondasi_lattice_detail_tools(mcp):
     @mcp.tool()
     async def execute_pondasi_lattice_detail_analysis(code: str) -> str:
         """
-        Mengambil data mentah (DataFrame) DETAIL pondasi lattice.
-        WAJIB dipanggil PERTAMA kali untuk pertanyaan detail pondasi lattice, 
-        sebelum memanggil `execute_pondasi_lattice_detail_analysis`
+        Gunakan tool ini untuk menganalisis data DETAIL ASESMEN KONDISI PONDASI TOWER TIPE LATTICE
+        
+        DataFrame tersedia dalam variabel df.
+        WAJIB menggunakan print(...) untuk melihat output
         """
 
         try:

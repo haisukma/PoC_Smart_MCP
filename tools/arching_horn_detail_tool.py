@@ -1,7 +1,7 @@
-import io
-import contextlib
 import pandas as pd
 import numpy as np
+import textwrap
+from e2b_code_interpreter import AsyncSandbox
 from services_mcp.arching_horn_detail_service import get_arching_horn_detail_df
 
 ARCHING_HORN_DETAIL_DF = None
@@ -19,29 +19,47 @@ def register_arching_horn_detail_tools(mcp):
     @mcp.tool()
     async def execute_arching_horn_detail_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis data DETAIL ARCHING_HORN
+        Menganalisis data DETAIL ARCHING HORN menggunakan E2B Sandbox
         
-        DataFrame tersedia dalam variabel df.
+        DataFrame tersedia dalam variabel df
         WAJIB menggunakan print(...) untuk melihat output
+        
+        Ekseskusi Python dilakukan di lingkungan sandbox terisolasi
         """
 
+        sandbox = None
         try:
             df_arching_horn = await _get_cached_arching_horn_detail_df()
+
             if df_arching_horn.empty:
-                return "Data arching horn report kosong"
+                return "Data detail arching horn kosong"
 
-            local_vars = {
-                "df": df_arching_horn,
-                "pd": pd
-            }
+            json_data = df_arching_horn.to_json(orient="records")
+            json_path = "/tmp/arching_horn_detail.json"
 
-            output_buffer = io.StringIO()
-            with contextlib.redirect_stdout(output_buffer):
-                exec(code, local_vars)
+            sandbox = await AsyncSandbox.create()
+            await sandbox.files.write(json_path, json_data)
 
-            result = output_buffer.getvalue()
+            execution_code = textwrap.dedent(f"""
+                import pandas as pd
+                df = pd.read_json("{json_path}", orient="records")
+                print("Shape:", df.shape)
+                print("Columns:", df.columns.tolist)
+            """) + "\n" + textwrap.dedent(code)
 
-            return (
+            execution = await sandbox.run_code(
+                execution_code, timeout=120)
+
+            if execution.error:
+                return(
+                    "Error executing Python code: "
+                    f"{execution.error.values}"
+                )
+
+            stdout = execution.logs.stdout or []
+            result = "".join(str(item) for item in stdout)
+
+            return(
                 result.strip()
                 if result.strip()
                 else "Kode berhasil dieksekusi tanpa output print"
@@ -49,3 +67,46 @@ def register_arching_horn_detail_tools(mcp):
 
         except Exception as e:
             return f"Error executing Python code: {str(e)}"
+
+        finally:
+            if sandbox is not None:
+                try:
+                    await sandbox.kill()
+                except Exception:
+                    pass
+
+# def register_arching_horn_detail_tools(mcp):
+
+#     @mcp.tool()
+#     async def execute_arching_horn_detail_analysis(code: str) -> str:
+#         """
+#         Gunakan tool ini untuk menganalisis data DETAIL ARCHING_HORN
+        
+#         DataFrame tersedia dalam variabel df.
+#         WAJIB menggunakan print(...) untuk melihat output
+#         """
+
+#         try:
+#             df_arching_horn = await _get_cached_arching_horn_detail_df()
+#             if df_arching_horn.empty:
+#                 return "Data arching horn report kosong"
+
+#             local_vars = {
+#                 "df": df_arching_horn,
+#                 "pd": pd
+#             }
+
+#             output_buffer = io.StringIO()
+#             with contextlib.redirect_stdout(output_buffer):
+#                 exec(code, local_vars)
+
+#             result = output_buffer.getvalue()
+
+#             return (
+#                 result.strip()
+#                 if result.strip()
+#                 else "Kode berhasil dieksekusi tanpa output print"
+#             )
+
+#         except Exception as e:
+#             return f"Error executing Python code: {str(e)}"

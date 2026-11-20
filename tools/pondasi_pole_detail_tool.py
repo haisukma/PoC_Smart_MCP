@@ -19,9 +19,10 @@ def register_pondasi_pole_detail_tools(mcp):
     @mcp.tool()
     async def execute_pondasi_pole_detail_analysis(code: str) -> str:
         """
-        Mengambil data mentah (DataFrame) DETAIL KONDISI PONDASI TOWER TIPE POLE.
-        WAJIB dipanggil PERTAMA kali untuk pertanyaan detail kondisi pondasi tower tipe pole, 
-        sebelum memanggil `execute_pondasi_pole_detail_analysis`
+        Gunakan tool ini untuk menganalisis data DETAIL ASESMEN KONDISI PONDASI TOWER TIPE POLE
+        
+        DataFrame tersedia dalam variabel df.
+        WAJIB menggunakan print(...) untuk melihat output
         """
 
         try:

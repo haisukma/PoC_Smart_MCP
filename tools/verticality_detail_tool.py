@@ -19,9 +19,10 @@ def register_verticality_detail_tools(mcp):
     @mcp.tool()
     async def execute_verticality_detail_analysis(code: str) -> str:
         """
-        Mengambil data mentah (DataFrame) DETAIL VERTICALITY TOWER atau PENGUKURAN KEMIRINGAN.
-        WAJIB dipanggil PERTAMA kali untuk pertanyaan detail verticality tower, 
-        sebelum memanggil `execute_verticality_detail_analysis`
+        Gunakan tool ini untuk menganalisis data DETAIL PENGUKURAN KEMIRINGAN atau VERTICALITY TOWER
+        
+        DataFrame tersedia dalam variabel df.
+        WAJIB menggunakan print(...) untuk melihat output
         """
 
         try:

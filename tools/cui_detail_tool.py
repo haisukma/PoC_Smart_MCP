@@ -1,7 +1,7 @@
-import io
-import contextlib
 import pandas as pd
 import numpy as np
+import textwrap
+from e2b_code_interpreter import AsyncSandbox
 from services_mcp.cui_detail_service import get_cui_detail_df
 
 CUI_DETAIL_DF = None
@@ -19,29 +19,46 @@ def register_cui_detail_tools(mcp):
     @mcp.tool()
     async def execute_cui_detail_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis data DETAIL CLIMB UP INSPECTION
+        Menganalisis data DETAIL CLIMB UP INSPECTION menggunakan E2B Sandbox
         
-        DataFrame tersedia dalam variabel df.
+        DataFrame tersedia dalam variabel df
         WAJIB menggunakan print(...) untuk melihat output
+        
+        Eksekusi Python dilakukan di lingkungan sandbox terisolasi
         """
 
+        sandbox = None
         try:
-            df_cui =( await _get_cached_cui_detail_df()).copy()
+            df_cui = await _get_cached_cui_detail_df()
+
             if df_cui.empty:
-                return "Data cui report kosong"
+                return "Data detail cui kosong"
 
-            local_vars = {
-                "df": df_cui,
-                "pd": pd
-            }
+            json_data = df_cui.to_json(orient="records")
+            json_path = "/tmp/cui_detail.json"
 
-            output_buffer = io.StringIO()
-            with contextlib.redirect_stdout(output_buffer):
-                exec(code, local_vars)
+            sandbox = await AsyncSandbox.create()
+            await sandbox.files.write(json_path, json_data)
 
-            result = output_buffer.getvalue()
+            execution_code = textwrap.dedent(f"""
+                import pandas as pd
+                df = pd.read_json("{json_path}", orient="records")
+                print("Shape:", df.shape)
+                print("Columns:", df.columns.tolist)
+            """) + "\n" + textwrap.dedent(code)
 
-            return (
+            execution = await sandbox.run_code(
+                execution_code, timeout=120)
+
+            if execution.error:
+                return (
+                    "Error executing Python code: "
+                    f"{execution.error.value}")
+
+            stdout = execution.logs.stdout or []
+            result = "".join(str(item) for item in stdout)
+
+            return(
                 result.strip()
                 if result.strip()
                 else "Kode berhasil dieksekusi tanpa output print"
@@ -49,3 +66,10 @@ def register_cui_detail_tools(mcp):
 
         except Exception as e:
             return f"Error executing Python code: {str(e)}"
+
+        finally:
+            if sandbox is not None:
+                try:
+                    await sandbox.kill()
+                except Exception:
+                    pass
