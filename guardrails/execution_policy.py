@@ -53,7 +53,7 @@ BLOCKED_CALLS = {
     "delattr",
 }
 
-MAX_CODE_LENGTH = 5_000
+MAX_CODE_LENGTH = 10_000
 
 class CodeValidator(ast.NodeVisitor):
     def visit_Import(self, node):
@@ -61,9 +61,8 @@ class CodeValidator(ast.NodeVisitor):
             root = alias.name.split(".")[0]
 
             if root not in ALLOWED_IMPORTS:
-                raise ValueError(f"Import tidak diizinkan: {root}"
-)
-
+                raise ValueError(f"Import tidak diizinkan: {root}")
+            
         self.generic_visit(node)
 
     def visit_ImportFrom(self, node):

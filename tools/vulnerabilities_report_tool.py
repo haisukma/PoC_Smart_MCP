@@ -2,6 +2,7 @@ import io
 import contextlib
 import pandas as pd
 import numpy as np
+from guardrails.execution_policy import get_restricted_builtins, validate_code
 from services_mcp.vulnerabilities_report_service import get_vulnerabilities_report_df
 
 VULNERABILITIES_REPORT_DF = None
@@ -32,18 +33,36 @@ def register_vulnerabilities_report_tools(mcp):
         """
 
         try:
+            validate_code(code)
+
             df_vulnerabilities_report = await _get_cached_vulnerabilities_report_df()
             if df_vulnerabilities_report.empty:
                 return "Data vulnerabilities report kosong"
 
-            local_vars = {
+            if not code or not code.strip():
+                return "Kode python tidak boleh kosong"
+
+            df_execution = df_vulnerabilities_report.copy(deep=True)
+            executing_globals = {
+                "__builtins__": get_restricted_builtins,
+                "__name__": "__llm_analysis__",
                 "df": df_vulnerabilities_report,
-                "pd": pd
+                "pd": pd,
+                "np": np
             }
+
+            # local_vars = {
+            #     "df": df_vulnerabilities_report,
+            #     "pd": pd
+            # }
 
             output_buffer = io.StringIO()
             with contextlib.redirect_stdout(output_buffer):
-                exec(code, local_vars)
+                exec(
+                    compile(code, "<llm_generated_code>", "exec"),
+                    executing_globals,
+                    executing_globals
+                )
 
             result = output_buffer.getvalue()
 
@@ -52,6 +71,9 @@ def register_vulnerabilities_report_tools(mcp):
                 if result.strip()
                 else "Kode berhasil dieksekusi tanpa output print"
             )
+
+        except ImportError as e:
+            return f"Library tidak diizinkan: {str(e)}"
 
         except Exception as e:
             return f"Error executing Python code: {str(e)}"

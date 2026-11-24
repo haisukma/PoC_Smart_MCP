@@ -1,8 +1,12 @@
 .env
 smart_mcp/
+new-smart-mcp-venv/
+.python-version
+.python-version
 .DS_Store
 ARCHITECTURE.md
 data_storage/
+requirements_old.txt
 app_monitoring.log
 app_monitoring2.log
 app_monitoring3.log
