@@ -68,7 +68,7 @@ async def get_isolator_change_df() -> pd.DataFrame:
 
             next_page = False
             for page_number, result in results:
-                records = results.get("data", [])
+                records = result.get("data", [])
                 all_records.extend(records)
                 pagination = result.get("pagination", {})
                 if pagination.get("next_page", False):

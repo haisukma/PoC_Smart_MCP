@@ -1,202 +1,191 @@
-import io
-import contextlib
+import asyncio
+import logging
+import time
 import pandas as pd
-import numpy as np
-import textwrap
 import modal
-from e2b_code_interpreter import AsyncSandbox
 from services_mcp.grounding_detail_service import get_grounding_detail_df
 
+logger = logging.getLogger(__name__)
+MODAL_APP_NAME = "si-smart-sandbox"
+
+MODAL_IMAGE = (
+    modal.Image.debian_slim(python_version="3.12")
+    .pip_install(
+        "pandas",
+        "numpy",
+        "matplotlib",
+        "seaborn"
+    )
+)
+
+SANDBOX_TIMEOUT = 180
+EXECUTION_TIMEOUT = 120
+SANDBOX_CPU = 0.5
+SANDBOX_MEMORY = 1024
+MAX_DATA_SIZE = 100 * 1024 * 1024
+
 GROUNDING_DETAIL_DF = None
+GROUNDING_DETAIL_LOCK = asyncio.Lock()
 
 async def _get_cached_grounding_detail_df() -> pd.DataFrame:
     global GROUNDING_DETAIL_DF
 
-    if GROUNDING_DETAIL_DF is None or GROUNDING_DETAIL_DF.empty:
-        GROUNDING_DETAIL_DF = await get_grounding_detail_df()
+    async with GROUNDING_DETAIL_LOCK:
+        if (
+            GROUNDING_DETAIL_DF is None
+            or GROUNDING_DETAIL_DF.empty
+        ):
+            logger.info("Fetching dataset")
+            GROUNDING_DETAIL_DF = (await get_grounding_detail_df())
 
-    return GROUNDING_DETAIL_DF
-
-# def register_grounding_detail_tools(mcp):
-
-#     @mcp.tool()
-#     async def execute_grounding_detail_analysis(code: str) -> str:
-#         """
-#         Gunakan tool ini untuk menganalisis data DETAIL GROUNDING
-
-#         DataFrame tersedia dalam variabel df
-#         WAJIB menggunakan print(...) untuk melihat output
-#         """
-
-#         try:
-#             df_grounding = await _get_cached_grounding_detail_df()
-
-#             if df_grounding.empty:
-#                 return "Data grounding report kosong"
-
-#             local_vars_grounding = {
-#                 "df": df_grounding,
-#                 "pd": pd
-#             }
-
-#             output_buffer = io.StringIO()
-#             with contextlib.redirect_stdout(output_buffer):
-#                 exec(code, local_vars_grounding)
-
-#             result = output_buffer.getvalue()
-
-#             return (
-#                 result.strip()
-#                 if result.strip()
-#                 else "Kode berhasil dieksekusi tanpa output print")
-
-#         except Exception as e:
-#             return f"Error executing Python code: {str(e)}"
+        return GROUNDING_DETAIL_DF.copy()
 
 def register_grounding_detail_tools(mcp):
-
-    MODAL_IMAGE = modal.Image.debian_slim(python_version="3.12").pip_install(
-        "pandas",
-        "numpy",
-        "matplotlib",
-        "seaborn",
-    )
-    MODAL_APP = modal.App.lookup("si-smart-sandbox", create_if_missing=True)
 
     @mcp.tool()
     async def execute_grounding_detail_analysis(code: str) -> str:
         """
-        Menganalisis data DETAIL GROUNDING menggunakan Modal Sandbox.
+        Menganalisis data DETAIL GROUNDING atau PENTANAHAN
+        
+        DataFrame tersedia dalam variabel df
+        WAJIB menggunakan print(...) untuk melihat output
 
-        DataFrame tersedia dalam variabel df.
-        WAJIB menggunakan print(...) untuk melihat output.
-
-        Eksekusi Python dilakukan di lingkungan sandbox terisolasi.
+        Eksekusi python dilakukan di lingkungan sandbox terisolasi
         """
 
-        sandbox = None
+        sb = None
+        started_at = time.perf_counter()
 
         try:
-            df_grounding = await _get_cached_grounding_detail_df()
-            if df_grounding.empty:
-                return "Data detail grounding kosong"
 
-            json_data = df_grounding.to_json(orient="records")
-            sandbox = await modal.Sandbox.create.aio(
+            logger.info("Getting dataset")
+            df = await _get_cached_grounding_detail_df()
+
+            if df.empty:
+                return "Data Grounding report kosong"
+
+            json_data = df.to_json(
+                orient="records",
+                date_format="iso",
+                force_ascii=False
+            )
+
+            data_size = len(json_data.encode("utf-8"))
+
+            if data_size > MAX_DATA_SIZE:
+                return (f"Dataset Grounding terlalu besar ({data_size / 1024 / 1024:.2f} MB)")
+
+            logger.info("Dataset ready | rows=%s | size=%s bytes", len(df), data_size)
+
+            code = code.strip()
+            if code.startswith("```"):
+                lines = code.splitlines()
+                lines = lines[1:]
+
+                if lines and lines[-1].strip() == "```":
+                    lines = lines[:-1]
+
+                code = "\n".join(lines)
+
+            execution_script = f'''
+import pandas as pd
+import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+
+df = pd.read_json(
+    "/tmp/grounding_data.json",
+    orient="records"
+)
+
+print("Jumlah baris:", len(df))
+print("Jumlah kolom:", len(df.columns))
+print("Kolom:", df.columns.tolist())
+print()
+
+{code}
+'''
+
+            logger.info("MODAL | Looking up app")
+            sb_app = await modal.App.lookup.aio(
+                MODAL_APP_NAME,
+                create_if_missing=True
+            )
+
+            logger.info("MODAL | Creating sandbox")
+            sb = await modal.Sandbox.create.aio(
+                app=sb_app,
                 image=MODAL_IMAGE,
-                app=MODAL_APP,
-                region=["ap-southeast"],
-                cpu=0.25,
-                memory=512,
-                timeout=120,
-                block_network=True,
-            )
-            json_path = "/tmp/grounding_detail.json"
-            async with sandbox.open.aio(json_path, "w") as f:
-                await f.write.aio(json_data)
-
-            execution_code = (
-                textwrap.dedent(f"""
-                    import pandas as pd
-
-                    df = pd.read_json("{json_path}", orient="records")
-
-                    print("Shape:", df.shape)
-                    print("Columns:", df.columns.tolist())
-
-                """)
-                + "\n"
-                + textwrap.dedent(code)
+                cpu=SANDBOX_CPU,
+                memory=SANDBOX_MEMORY,
+                timeout=SANDBOX_TIMEOUT,
+                block_network=True
             )
 
-            process = await sandbox.exec.aio("python", "-c", execution_code)
-            stdout = await process.stdout.read.aio()
-            stderr = await process.stderr.read.aio()
-            await process.wait.aio()
+            logger.info("MODAL | Sandbox created")
 
-            if process.returncode != 0:
-                return (
-                    "Error executing Python code: "
-                    f"{stderr.strip()}"
-                )
+            await sb.filesystem.write_text.aio(json_data, "/tmp/grounding_data.json")
+            await sb.filesystem.write_text.aio(execution_script, "/tmp/analysis.py")
+            logger.info("MODAL | Dataset and script uploaded")
+            logger.info("MODAL | Validating Python syntax")
+
+            check = await sb.exec.aio(
+                "python",
+                "-m",
+                "py_compile",
+                "/tmp/analysis.py",
+                timeout=20
+            )
+
+            check_stdout = await check.stdout.read.aio()
+            check_stderr = await check.stderr.read.aio()
+            check_returncode = await check.wait.aio()
+
+            if check_returncode != 0:
+                return (f"Python SyntaxError:{check_stderr or check_stdout}")
+
+            logger.info("MODAL | Executing analysis")
+
+            process = await sb.exec.aio(
+                "python",
+                "/tmp/analysis.py",
+                timeout=EXECUTION_TIMEOUT
+            )
+
+            stdout, stderr, returncode = await asyncio.gather(
+                process.stdout.read.aio(),
+                process.stderr.read.aio(),
+                process.wait.aio()
+            )
+
+            duration = time.perf_counter() - started_at
+            logger.info("MODAL | Execution completed | returncode=%s | duration=%.2fs", returncode, duration)
+
+            if returncode != 0:
+                return (f"Error executing Grounding analysis. Details:\n{stderr or stdout}")
+
+            output = stdout.strip()
+
+            if not output:
+                output = "Kode berhasil dieksekusi tanpa output print."
 
             return (
-                stdout.strip()
-                if stdout.strip()
-                else "Kode berhasil dieksekusi tanpa output print"
-            )
+                f"{output}\n\nExecution time: {duration:.2f} seconds")
 
         except Exception as e:
-            return f"Error executing Python code: {str(e)}"
+            logger.exception("Modal execution failed")
+
+            return (f"Error executing Python code: ({type(e).__name__}): {str(e)}")
 
         finally:
-            if sandbox is not None:
+            if sb is not None:
                 try:
-                    await sandbox.terminate.aio()
+                    await sb.terminate.aio()
+                    logger.info("MODAL | Sandbox terminated")
+
                 except Exception:
-                    pass
+                    logger.exception("MODAL | Failed to terminate sandbox")
 
-    # @mcp.tool()
-    # async def execute_grounding_detail_analysis(code: str) -> str:
-    #     """
-    #     Menganalisis data DETAIL GROUNDING menggunakan E2B Sandbox.
-
-    #     DataFrame tersedia dalam variabel df.
-    #     WAJIB menggunakan print(...) untuk melihat output.
-
-    #     Eksekusi Python dilakukan di lingkungan sandbox terisolasi.
-    #     """
-
-    #     sandbox = None
-
-    #     try:
-    #         df_grounding = await _get_cached_grounding_detail_df()
-
-    #         if df_grounding.empty:
-    #             return "Data detail grounding kosong"
-
-    #         json_data = df_grounding.to_json(orient="records")
-
-    #         sandbox = await AsyncSandbox.create()
-    #         json_path = "/tmp/grounding_detail.json"
-
-    #         await sandbox.files.write(json_path, json_data)
-
-    #         execution_code = textwrap.dedent(f"""
-    #             import pandas as pd
-
-    #             df = pd.read_json("{json_path}", orient="records")
-
-    #             print("Shape:", df.shape)
-    #             print("Columns:", df.columns.tolist())
-
-    #         """) + "\n" + textwrap.dedent(code)
-
-    #         execution = await sandbox.run_code(
-    #             execution_code,
-    #             timeout=120)
-
-    #         if execution.error:
-    #             return (
-    #                 "Error executing Python code: "
-    #                 f"{execution.error.value}"
-    #             )
-
-    #         stdout = execution.logs.stdout or []
-    #         result = "".join(str(item) for item in stdout)
-
-    #         return (
-    #             result.strip()
-    #             if result.strip()
-    #             else "Kode berhasil dieksekusi tanpa output print"
-    #         )
-
-    #     except Exception as e:
-    #         return f"Error executing Python code: {str(e)}"
-
-    #     finally:
-    #         if sandbox is not None:
-    #             try:
-    #                 await sandbox.kill()
-    #             except Exception:
-    #                 pass
+    return mcp

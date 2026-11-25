@@ -180,6 +180,44 @@ def log_stage(
         f"duration={duration:.3f}s"
         + (f" | {detail_text}" if detail_text else ""))
 
+def extract_token_usage(output):
+    """
+    Mengambil token usage dari AIMessage LangChain.
+    Mendukung usage_metadata dan response_metadata.
+    """
+    if output is None:
+        return None
+
+    # Format standar LangChain
+    usage = getattr(output, "usage_metadata", None)
+
+    if usage:
+        return {
+            "input_tokens": usage.get("input_tokens"),
+            "output_tokens": usage.get("output_tokens"),
+            "total_tokens": usage.get("total_tokens")
+        }
+
+    # Fallback untuk format OpenAI-compatible
+    response_metadata = getattr(output, "response_metadata", {}) or {}
+    usage = response_metadata.get("token_usage") or response_metadata.get("usage") or {}
+
+    if usage:
+        input_tokens = usage.get("prompt_tokens", usage.get("input_tokens"))
+        output_tokens = usage.get("completion_tokens", usage.get("output_tokens"))
+        total_tokens = usage.get("total_tokens")
+
+        if total_tokens is None and input_tokens is not None and output_tokens is not None:
+            total_tokens = input_tokens + output_tokens
+
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": total_tokens
+        }
+
+    return None
+
 def validate_prompt_injection(user_input: str):
     for pattern in COMPILED_INJECTION_REGEX:
         if pattern.search(user_input):
@@ -254,8 +292,19 @@ async def stream_agent_response(
         "configurable": {"thread_id": thread_id},
         "recursion_limit": 12}
 
+    # first_token_logged = False
+    # model_runs = {}
     first_token_logged = False
     model_runs = {}
+
+    token_totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0
+    }
+
+    llm_call_count = 0
+    llm_usage_missing = 0
 
     try:
         async for event in iterate_with_timeout(
@@ -308,6 +357,24 @@ async def stream_agent_response(
                     f"LLM START | request_id={request_id} | "
                     f"run_id={model_run_id} | model={model_name}")
 
+            # elif event_type == "on_chat_model_end":
+            #     model_run_id = str(event.get("run_id", ""))
+            #     run = model_runs.pop(model_run_id, None)
+
+            #     if run:
+            #         duration = time.perf_counter() - run["start_time"]
+
+            #         output = data.get("output")
+            #         actual_model = (
+            #             getattr(output, "response_metadata", {}).get("model_name")
+            #             or getattr(output, "response_metadata", {}).get("model")
+            #             or run["model_name"])
+
+            #         logger.info(
+            #             f"LLM END | request_id={request_id} | "
+            #             f"model={actual_model} | "
+            #             f"duration={duration:.3f}s")
+
             elif event_type == "on_chat_model_end":
                 model_run_id = str(event.get("run_id", ""))
                 run = model_runs.pop(model_run_id, None)
@@ -316,15 +383,53 @@ async def stream_agent_response(
                     duration = time.perf_counter() - run["start_time"]
 
                     output = data.get("output")
+
                     actual_model = (
                         getattr(output, "response_metadata", {}).get("model_name")
                         or getattr(output, "response_metadata", {}).get("model")
-                        or run["model_name"])
+                        or run["model_name"]
+                    )
+
+                    usage = extract_token_usage(output)
+
+                    if usage:
+                        input_tokens = usage["input_tokens"]
+                        output_tokens = usage["output_tokens"]
+                        total_tokens = usage["total_tokens"]
+
+                        # Hanya jumlahkan nilai yang benar-benar tersedia
+                        if input_tokens is not None:
+                            token_totals["input_tokens"] += input_tokens
+
+                        if output_tokens is not None:
+                            token_totals["output_tokens"] += output_tokens
+
+                        if total_tokens is not None:
+                            token_totals["total_tokens"] += total_tokens
+
+                        logger.info(
+                            f"LLM TOKEN USAGE | request_id={request_id} | "
+                            f"run_id={model_run_id} | model={actual_model} | "
+                            f"input_tokens={input_tokens} | "
+                            f"output_tokens={output_tokens} | "
+                            f"total_tokens={total_tokens}"
+                        )
+
+                    else:
+                        llm_usage_missing += 1
+
+                        logger.warning(
+                            f"LLM TOKEN USAGE MISSING | request_id={request_id} | "
+                            f"run_id={model_run_id} | model={actual_model}"
+                        )
+
+                    llm_call_count += 1
 
                     logger.info(
                         f"LLM END | request_id={request_id} | "
-                        f"model={actual_model} | "
-                        f"duration={duration:.3f}s")
+                        f"run_id={model_run_id} | model={actual_model} | "
+                        f"duration={duration:.3f}s"
+                    )
 
             elif event_type == "on_chat_model_error":
                 model_run_id = str(event.get("run_id", ""))
@@ -456,6 +561,15 @@ async def stream_agent_response(
                 f"duration={duration:.3f}s")
 
         tool_runs.clear()
+
+        logger.info(
+            f"LLM REQUEST TOKEN SUMMARY | request_id={request_id} | "
+            f"llm_calls={llm_call_count} | "
+            f"input_tokens={token_totals['input_tokens']} | "
+            f"output_tokens={token_totals['output_tokens']} | "
+            f"total_tokens={token_totals['total_tokens']} | "
+            f"usage_missing={llm_usage_missing}"
+        )
 
         log_stage(
             request_id or "unknown",

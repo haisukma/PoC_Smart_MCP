@@ -1,7 +1,6 @@
 import pandas as pd
 import io
 import contextlib
-
 from services_mcp.isolator_change_report_service import get_isolator_change_report_df
 
 __ISOLATOR_CHANGE_REPORT_DF: pd.DataFrame = None
