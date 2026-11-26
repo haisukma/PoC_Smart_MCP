@@ -109,7 +109,7 @@ logger = logging.getLogger("mcp_backend")
 logger.setLevel(logging.INFO)
 
 if not logger.handlers:
-  file_handler = logging.FileHandler("app_monitoring3.log", mode="a")
+  file_handler = logging.FileHandler("app_monitoring.log", mode="a")
   file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
   file_handler.setFormatter(file_formatter)
   logger.addHandler(file_handler)
