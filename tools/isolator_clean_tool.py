@@ -34,7 +34,7 @@ ISOLATOR_CLEAN_LOCK = asyncio.Lock()
 async def _get_cached_isolator_clean_df() -> pd.DataFrame:
     global ISOLATOR_CLEAN_DF
 
-    async with ISOLATOR_CLEAN_DF:
+    async with ISOLATOR_CLEAN_LOCK:
         if (
             ISOLATOR_CLEAN_DF is None 
             or ISOLATOR_CLEAN_DF.empty
@@ -47,7 +47,7 @@ async def _get_cached_isolator_clean_df() -> pd.DataFrame:
 def register_isolator_clean_tools(mcp):
 
     @mcp.tool()
-    async def execute_isolator_clean_analysis(code: str) -> str:
+    async def execute_isolator_clean_detail_analysis(code: str) -> str:
         """
         Menganalisis data DETAIL PEMBERSIHAN ISOLATOR menggunakan E2B Sandbox
         

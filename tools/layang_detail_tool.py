@@ -45,7 +45,7 @@ def register_layang_detail_tools(mcp):
     @mcp.tool()
     async def execute_layang_detail_analysis(code: str) -> str:
         """
-        Menganalisis data DETAIL TEMUAN serta MITIGASI LAYANG-LAYANG menggunakan E2B Sandbox
+        Menganalisis data DETAIL TEMUAN serta MITIGASI LAYANG-LAYANG 
         
         DataFrame tersedia dalam variabel df
         WAJIB menggunakan print(...) untuk melihat output

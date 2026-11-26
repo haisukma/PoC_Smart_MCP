@@ -34,21 +34,21 @@ ISOLATOR_CHANGE_DETAIL_DF = None
 ISOLATOR_CHANGE_DETAIL_LOCK = asyncio.Lock()
 
 async def _get_cached_isolator_change_df() -> pd.DataFrame:
-    global ISOLATOR_CHANGE_DF
+    global ISOLATOR_CHANGE_DETAIL_DF
 
     async with ISOLATOR_CHANGE_DETAIL_LOCK:
-        if (ISOLATOR_CHANGE_DF is None 
-            or ISOLATOR_CHANGE_DF.empty
+        if (ISOLATOR_CHANGE_DETAIL_DF is None 
+            or ISOLATOR_CHANGE_DETAIL_DF.empty
         ):
             logger.info("Fetching dataset")
-            ISOLATOR_CHANGE_DF = (await get_isolator_change_df())
+            ISOLATOR_CHANGE_DETAIL_DF = (await get_isolator_change_df())
 
-    return ISOLATOR_CHANGE_DF.copy()
+    return ISOLATOR_CHANGE_DETAIL_DF.copy()
 
 def register_isolator_change_tools(mcp):
 
     @mcp.tool()
-    async def execute_isolator_change_analysis(code: str) -> str:
+    async def execute_isolator_change_detail_analysis(code: str) -> str:
         """
         Menganalisis data DETAIL PENGGANTIAN ISOLATOR menggunakan E2B Sandbox
         
@@ -58,7 +58,6 @@ def register_isolator_change_tools(mcp):
         Eksekusi Python dilakukan di lingkungan sandbox terisolasi
         """
 
-        # sandbox = None?
         sb = None
         started_at = time.perf_counter()
 
@@ -103,7 +102,7 @@ df = pd.read_json(
 orient="records")
  
 print("Jumlah baris:", len(df))
-print("Jumlah kolom: len(df.columns))
+print("Jumlah kolom:", len(df.columns))
 print("Kolom:", df.columns.tolist())
 print()
  

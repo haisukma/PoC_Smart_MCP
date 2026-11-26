@@ -1,12 +1,8 @@
-import io
-import contextlib
-import pandas as pd
-import numpy as np
-import textwrap
-import modal
-import time
 import asyncio
 import logging
+import time
+import pandas as pd
+import modal
 from services_mcp.hammer_test_service import get_hammer_test_detail_df
 
 logger = logging.getLogger(__name__)
@@ -22,7 +18,7 @@ MODAL_IMAGE = (
     )
 )
 
-SANBOX_TIMEOUT = 180
+SANDBOX_TIMEOUT = 180
 EXECUTION_TIMEOUT = 120
 SANDBOX_CPU = 0.5
 SANDBOX_MEMORY = 1024
@@ -35,48 +31,51 @@ async def _get_cached_hammer_test_detail_df() -> pd.DataFrame:
     global HAMMER_TEST_DETAIL_DF
 
     async with HAMMER_TEST_DETAIL_LOCK:
-        if(
+        if (
             HAMMER_TEST_DETAIL_DF is None
             or HAMMER_TEST_DETAIL_DF.empty
         ):
             logger.info("Fetching dataset")
             HAMMER_TEST_DETAIL_DF = (await get_hammer_test_detail_df())
 
-    return HAMMER_TEST_DETAIL_DF.copy()
+        return HAMMER_TEST_DETAIL_DF.copy()
 
 def register_hammer_test_detail_tools(mcp):
 
     @mcp.tool()
     async def execute_hammer_test_detail_analysis(code: str) -> str:
         """
-        Menganalisis data DETAIL PENGUJIAN KEKUATAN BETON/HAMMER TEST TOWER dan PONDASI menggunakan E2B Sandbox
+        Menganalisis data DETAIL PENGUJIAN KEKUATAN BETON / HAMMER TEST TOWER DAN PONDASI
         
         DataFrame tersedia dalam variabel df
         WAJIB menggunakan print(...) untuk melihat output
-        
-        Eksekusi Python dilakukan di lingkungan sandbox terisolasi
+
+        Eksekusi python dilakukan di lingkungan sandbox terisolasi
         """
 
         sb = None
         started_at = time.perf_counter()
 
         try:
+
             logger.info("Getting dataset")
-            df_hammer_test = await _get_cached_hammer_test_detail_df()
+            df = await _get_cached_hammer_test_detail_df()
 
-            if df_hammer_test.empty:
-                return "Data detail hammer test kosong"
+            if df.empty:
+                return "Data hammer test report kosong."
 
-            json_data = df_hammer_test.to_json(
+            json_data = df.to_json(
                 orient="records",
                 date_format="iso",
-                force_ascii= False
+                force_ascii=False
             )
 
             data_size = len(json_data.encode("utf-8"))
 
             if data_size > MAX_DATA_SIZE:
-                return (f"Dataset hammer terst terlalu besar ({data_size / 1024 / 1024:.2f} MB)")
+                return (f"Dataset Hammer test terlalu besar ({data_size / 1024 / 1024:.2f} MB)")
+
+            logger.info("Dataset ready | rows=%s | size=%s bytes", len(df), data_size)
 
             code = code.strip()
             if code.startswith("```"):
@@ -97,8 +96,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 df = pd.read_json(
-"/tmp/hammer_test_data.json",
-orient="records)
+    "/tmp/hammer_test_data.json",
+    orient="records"
+)
 
 print("Jumlah baris:", len(df))
 print("Jumlah kolom:", len(df.columns))
@@ -107,19 +107,20 @@ print()
 
 {code}
 '''
+
             logger.info("MODAL | Looking up app")
             sb_app = await modal.App.lookup.aio(
                 MODAL_APP_NAME,
                 create_if_missing=True
             )
 
-            logger.info("MODAL | Create sandbox")
+            logger.info("MODAL | Creating sandbox")
             sb = await modal.Sandbox.create.aio(
                 app=sb_app,
                 image=MODAL_IMAGE,
                 cpu=SANDBOX_CPU,
                 memory=SANDBOX_MEMORY,
-                timeout=SANBOX_TIMEOUT,
+                timeout=SANDBOX_TIMEOUT,
                 block_network=True
             )
 
@@ -128,7 +129,7 @@ print()
             await sb.filesystem.write_text.aio(json_data, "/tmp/hammer_test_data.json")
             await sb.filesystem.write_text.aio(execution_script, "/tmp/analysis.py")
             logger.info("MODAL | Dataset and script uploaded")
-            logger.info("MODAL | Validating python syntax")
+            logger.info("MODAL | Validating Python syntax")
 
             check = await sb.exec.aio(
                 "python",
@@ -143,7 +144,7 @@ print()
             check_returncode = await check.wait.aio()
 
             if check_returncode != 0:
-                return (f"Python syntaxError: {check_stderr or check_stdout}")
+                return (f"Python SyntaxError:{check_stderr or check_stdout}")
 
             logger.info("MODAL | Executing analysis")
 
@@ -160,22 +161,23 @@ print()
             )
 
             duration = time.perf_counter() - started_at
-            logger.info("MODAL | Execution completed | returncode=%s | duration=%s.2fs", returncode, duration)
+            logger.info("MODAL | Execution completed | returncode=%s | duration=%.2fs", returncode, duration)
 
             if returncode != 0:
-                return (f"Error executing analysis. Details:\n\n{stderr or stdout}")
+                return (f"Error executing hammer test analysis. Details:\n{stderr or stdout}")
 
             output = stdout.strip()
 
             if not output:
                 output = "Kode berhasil dieksekusi tanpa output print"
 
-            return (f"{output}\n\nExecution time: {duration:.2f} seconds")
+            return (
+                f"{output}\n\nExecution time: {duration:.2f} seconds")
 
         except Exception as e:
             logger.exception("Modal execution failed")
 
-            return(f"Error executing python code: ({type(e).__name__}): {str(e)}")
+            return (f"Error executing Python code: ({type(e).__name__}): {str(e)}")
 
         finally:
             if sb is not None:
