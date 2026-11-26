@@ -8,7 +8,7 @@ import math
 import uuid
 import time
 from contextvars import ContextVar
-from agent import get_active_agent, init_agent, shutdown_agent
+from agent import get_active_agent, init_agent, shutdown_agent, trim_agent_history
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status, Request, Response
 from fastapi.staticfiles import StaticFiles
@@ -181,14 +181,9 @@ def log_stage(
         + (f" | {detail_text}" if detail_text else ""))
 
 def extract_token_usage(output):
-    """
-    Mengambil token usage dari AIMessage LangChain.
-    Mendukung usage_metadata dan response_metadata.
-    """
     if output is None:
         return None
 
-    # Format standar LangChain
     usage = getattr(output, "usage_metadata", None)
 
     if usage:
@@ -198,7 +193,6 @@ def extract_token_usage(output):
             "total_tokens": usage.get("total_tokens")
         }
 
-    # Fallback untuk format OpenAI-compatible
     response_metadata = getattr(output, "response_metadata", {}) or {}
     usage = response_metadata.get("token_usage") or response_metadata.get("usage") or {}
 
@@ -292,8 +286,6 @@ async def stream_agent_response(
         "configurable": {"thread_id": thread_id},
         "recursion_limit": 12}
 
-    # first_token_logged = False
-    # model_runs = {}
     first_token_logged = False
     model_runs = {}
 
@@ -307,6 +299,8 @@ async def stream_agent_response(
     llm_usage_missing = 0
 
     try:
+        await trim_agent_history(config)
+        
         async for event in iterate_with_timeout(
             agent.astream_events(
                 inputs,
@@ -357,24 +351,6 @@ async def stream_agent_response(
                     f"LLM START | request_id={request_id} | "
                     f"run_id={model_run_id} | model={model_name}")
 
-            # elif event_type == "on_chat_model_end":
-            #     model_run_id = str(event.get("run_id", ""))
-            #     run = model_runs.pop(model_run_id, None)
-
-            #     if run:
-            #         duration = time.perf_counter() - run["start_time"]
-
-            #         output = data.get("output")
-            #         actual_model = (
-            #             getattr(output, "response_metadata", {}).get("model_name")
-            #             or getattr(output, "response_metadata", {}).get("model")
-            #             or run["model_name"])
-
-            #         logger.info(
-            #             f"LLM END | request_id={request_id} | "
-            #             f"model={actual_model} | "
-            #             f"duration={duration:.3f}s")
-
             elif event_type == "on_chat_model_end":
                 model_run_id = str(event.get("run_id", ""))
                 run = model_runs.pop(model_run_id, None)
@@ -397,7 +373,6 @@ async def stream_agent_response(
                         output_tokens = usage["output_tokens"]
                         total_tokens = usage["total_tokens"]
 
-                        # Hanya jumlahkan nilai yang benar-benar tersedia
                         if input_tokens is not None:
                             token_totals["input_tokens"] += input_tokens
 
@@ -418,27 +393,17 @@ async def stream_agent_response(
                     else:
                         llm_usage_missing += 1
 
-                        logger.warning(
-                            f"LLM TOKEN USAGE MISSING | request_id={request_id} | "
-                            f"run_id={model_run_id} | model={actual_model}"
-                        )
+                        logger.warning(f"LLM TOKEN USAGE MISSING | request_id={request_id} | run_id={model_run_id} | model={actual_model}")
 
                     llm_call_count += 1
 
-                    logger.info(
-                        f"LLM END | request_id={request_id} | "
-                        f"run_id={model_run_id} | model={actual_model} | "
-                        f"duration={duration:.3f}s"
-                    )
+                    logger.info(f"LLM END | request_id={request_id} | run_id={model_run_id} | model={actual_model} | duration={duration:.3f}s")
 
             elif event_type == "on_chat_model_error":
                 model_run_id = str(event.get("run_id", ""))
                 run = model_runs.pop(model_run_id, None)
 
-                logger.error(
-                    f"LLM ERROR | request_id={request_id} | "
-                    f"run_id={model_run_id} | "
-                    f"error={str(event.get('data', {}).get('error'))[:500]}")
+                logger.error(f"LLM ERROR | request_id={request_id} | run_id={model_run_id} | error={str(event.get('data', {}).get('error'))[:500]}")
 
             elif event_type == "on_tool_end":
                 run = tool_runs.pop(run_id, None)
@@ -454,15 +419,10 @@ async def stream_agent_response(
                     tool_calls.add(1, attributes)
                     tool_duration.record(duration, attributes)
 
-                    logger.info(
-                        f"MCP TOOL END | request_id={request_id} | "
-                        f"tool={run['tool_name']} | run_id={run_id} | "
-                        f"duration={duration:.3f}s | status=success")
+                    logger.info(f"MCP TOOL END | request_id={request_id} | tool={run['tool_name']} | run_id={run_id} | duration={duration:.3f}s | status=success")
+
                 else:
-                    logger.warning(
-                        f"MCP TOOL END WITHOUT START | "
-                        f"request_id={request_id} | "
-                        f"tool={tool_name} | run_id={run_id}")
+                    logger.warning(f"MCP TOOL END WITHOUT START | request_id={request_id} | tool={tool_name} | run_id={run_id}")
 
             elif event_type == "on_tool_error":
                 run = tool_runs.pop(run_id, None)
@@ -488,16 +448,10 @@ async def stream_agent_response(
                     tool_errors.add(1, attributes)
                     tool_duration.record(duration, attributes)
 
-                    logger.error(
-                        f"MCP TOOL ERROR | request_id={request_id} | "
-                        f"tool={run['tool_name']} | run_id={run_id} | "
-                        f"duration={duration:.3f}s | error={str(error)[:500]}")
+                    logger.error(f"MCP TOOL ERROR | request_id={request_id} | tool={run['tool_name']} | run_id={run_id} | duration={duration:.3f}s | error={str(error)[:500]}")
+                
                 else:
-                    logger.error(
-                        f"MCP TOOL ERROR WITHOUT START | "
-                        f"request_id={request_id} | "
-                        f"tool={tool_name} | run_id={run_id} | "
-                        f"error={str(error)[:500]}")
+                    logger.error(f"MCP TOOL ERROR WITHOUT START | request_id={request_id} | tool={tool_name} | run_id={run_id} | error={str(error)[:500]}")
 
             elif event_type == "on_chat_model_stream":
                 chunk = data.get("chunk")
@@ -523,21 +477,16 @@ async def stream_agent_response(
                             yield block["text"]
 
     except asyncio.TimeoutError:
-        logger.warning(
-            f"AGENT TIMEOUT | request_id={request_id} | "
-            f"timeout={TIMEOUT_SECONDS}s")
+        logger.warning(f"AGENT TIMEOUT | request_id={request_id} | timeout={TIMEOUT_SECONDS}s")
         yield "\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu"
 
     except Exception as e:
         if "recursion limit" in str(e).lower():
-            logger.warning(
-                f"AGENT RECURSION LIMIT | request_id={request_id}")
+            logger.warning(f"AGENT RECURSION LIMIT | request_id={request_id}")
             yield (
-                "\n\nSistem Memotong Eksekusi Paksa:\n"
-                "Proses analisis data terlalu panjang dan berputar-putar")
+                "\n\nSistem Memotong Eksekusi Paksa:\nProses analisis data terlalu panjang dan berputar-putar")
         else:
-            logger.exception(
-                f"AGENT ERROR | request_id={request_id}")
+            logger.exception(f"AGENT ERROR | request_id={request_id}")
             yield f"\n\n[Sistem Error]: {str(e)}"
 
     finally:

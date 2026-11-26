@@ -6,12 +6,14 @@ from langchain_mcp_adapters.tools import load_mcp_tools
 from langchain_openai import ChatOpenAI
 from contextlib import AsyncExitStack
 from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage, HumanMessage, RemoveMessage
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from dotenv import load_dotenv
 import os
 
 load_dotenv()
+
+MAX_HISTORY_CONVERSATIONS = 5
 
 DB_URL = os.getenv("DATABASE_URL")
 server_params = StdioServerParameters(
@@ -89,6 +91,55 @@ Kamu adalah JARVIS ASSISSTANT yang HANYA MEMBAHAS TRANSMISI TOWER. Jawab dalam B
 exit_stack: AsyncExitStack | None = None
 agent_executor = None
 
+async def trim_agent_history(config):
+    agent = get_active_agent()
+
+    state = await agent.aget_state(config)
+    messages = state.values.get("messages", [])
+
+    if not messages:
+        return
+
+    conversations = []
+    current_conversation = []
+    preserved_messages = []
+
+    for msg in messages:
+        if isinstance(msg, SystemMessage):
+            preserved_messages.append(msg)
+            continue
+
+        if isinstance(msg, HumanMessage):
+            if current_conversation:
+                conversations.append(current_conversation)
+
+            current_conversation = [msg]
+
+        elif current_conversation:
+            current_conversation.append(msg)
+
+        else:
+            preserved_messages.append(msg)
+
+    if current_conversation:
+        conversations.append(current_conversation)
+
+    if len(conversations) <= MAX_HISTORY_CONVERSATIONS:
+        return
+    
+    conversations_to_remove = conversations[:-MAX_HISTORY_CONVERSATIONS]
+    messages_to_remove = [
+        msg
+        for conversation in conversations_to_remove
+        for msg in conversation
+    ]
+
+    await agent.aupdate_state(
+        config,
+        {"messages": [
+            RemoveMessage(id=msg.id)
+            for msg in messages_to_remove]})
+
 async def init_agent():
     global agent_executor, exit_stack
     exit_stack = AsyncExitStack()
@@ -103,7 +154,7 @@ async def init_agent():
         llm = ChatOpenAI(
             model="baidu/ernie-5.5-flash-preview:free", 
             temperature=0.1,
-            api_key=os.getenv("OPEN_ROUTER_KEY1"),
+            api_key=os.getenv("OPEN_ROUTER_KEY2"),
             base_url="https://openrouter.ai/api/v1"
         )
 

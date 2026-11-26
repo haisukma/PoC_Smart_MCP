@@ -83,7 +83,7 @@ def register_lightning_detail_tools(mcp):
                 lines = lines[1:]
 
                 if lines and lines[-1].strip() == "```":
-                    lines = lines[:-1]
+                    lines = lines[:-1]  
 
                 code = "\n".join(lines)
 
