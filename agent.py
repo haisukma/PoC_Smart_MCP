@@ -154,7 +154,7 @@ async def init_agent():
         llm = ChatOpenAI(
             model="baidu/ernie-5.5-flash-preview:free", 
             temperature=0.1,
-            api_key=os.getenv("OPEN_ROUTER_KEY3"),
+            api_key=os.getenv("OPEN_ROUTER_KEY2"),
             base_url="https://openrouter.ai/api/v1"
         )
 

@@ -1,4 +1,5 @@
 import asyncio
+import io
 import logging
 import time
 import pandas as pd
@@ -14,13 +15,14 @@ MODAL_IMAGE = (
         "pandas",
         "numpy",
         "matplotlib",
-        "seaborn"
+        "seaborn",
+        "pyarrow"
     )
 )
 
 SANDBOX_TIMEOUT = 180
 EXECUTION_TIMEOUT = 120
-SANDBOX_CPU = 0.5
+SANDBOX_CPU = 1.0 
 SANDBOX_MEMORY = 1024
 MAX_DATA_SIZE = 100 * 1024 * 1024
 
@@ -36,7 +38,7 @@ async def _get_cached_vulnerabilities_detail_df() -> pd.DataFrame:
             or VULNERABILITIES_DETAIL_DF.empty
         ):
             logger.info("Fetching dataset")
-            VULNERABILITIES_DETAIL_DF = (await get_vulnerabilities_detail_df())
+            VULNERABILITIES_DETAIL_DF = await get_vulnerabilities_detail_df()
 
         return VULNERABILITIES_DETAIL_DF.copy()
 
@@ -47,7 +49,9 @@ def register_vulnerabilities_detail_tools(mcp):
         """
         Menganalisis data DETAIL POTENSI KERAWANAN JALUR TRANSMISI atau VULNERABILITIES
         
-        DataFrame tersedia dalam variabel df
+        Kolom yang tersedia di df: [TBLNAME, IDUNIT, IDULTG, IDGARDU, IDLINE, IDLOC, UPT, ULTG, GARDU_INDUK,
+        LOKASI, LAT, LNG, TANGGAL, IDINSPECTION, IDSCH, PARAMDATE, TABLENAME, LOCTYPE, POTENSI_KERAWANAN, PEMILIK, NAMA_PEMILIK,
+        LAMA_PEKERJAAN, JARAK_KE_KONDUKTOR, KETERANGAN, ROWNUMID]
         WAJIB menggunakan print(...) untuk melihat output
 
         Eksekusi python dilakukan di lingkungan sandbox terisolasi
@@ -57,34 +61,27 @@ def register_vulnerabilities_detail_tools(mcp):
         started_at = time.perf_counter()
 
         try:
-
             logger.info("Getting dataset")
             df = await _get_cached_vulnerabilities_detail_df()
 
             if df.empty:
                 return "Data Vulnerabilities report kosong"
 
-            json_data = df.to_json(
-                orient="records",
-                date_format="iso",
-                force_ascii=False
-            )
+            parquet_buffer = io.BytesIO()
+            df.to_parquet(parquet_buffer, index=False, engine="pyarrow")
+            parquet_bytes = parquet_buffer.getvalue()
 
-            data_size = len(json_data.encode("utf-8"))
-
+            data_size = len(parquet_bytes)
             if data_size > MAX_DATA_SIZE:
-                return (f"Dataset Vulnerabilities terlalu besar ({data_size / 1024 / 1024:.2f} MB)")
+                return f"Dataset Vulnerabilities terlalu besar ({data_size / 1024 / 1024:.2f} MB)"
 
             logger.info("Dataset ready | rows=%s | size=%s bytes", len(df), data_size)
 
             code = code.strip()
             if code.startswith("```"):
-                lines = code.splitlines()
-                lines = lines[1:]
-
+                lines = code.splitlines()[1:]
                 if lines and lines[-1].strip() == "```":
                     lines = lines[:-1]
-
                 code = "\n".join(lines)
 
             execution_script = f'''
@@ -95,10 +92,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-df = pd.read_json(
-    "/tmp/vulnerabilities_data.json",
-    orient="records"
-)
+df = pd.read_parquet("/tmp/vulnerabilities_data.parquet")
 
 print("Jumlah baris:", len(df))
 print("Jumlah kolom:", len(df.columns))
@@ -126,28 +120,13 @@ print()
 
             logger.info("MODAL | Sandbox created")
 
-            await sb.filesystem.write_text.aio(json_data, "/tmp/vulnerabilities_data.json")
-            await sb.filesystem.write_text.aio(execution_script, "/tmp/analysis.py")
-            logger.info("MODAL | Dataset and script uploaded")
-            logger.info("MODAL | Validating Python syntax")
-
-            check = await sb.exec.aio(
-                "python",
-                "-m",
-                "py_compile",
-                "/tmp/analysis.py",
-                timeout=20
+            await asyncio.gather(
+                sb.filesystem.write_bytes.aio(remote_path="/tmp/vulnerabilities_data.parquet", data=parquet_bytes),
+                sb.filesystem.write_text.aio(execution_script, "/tmp/analysis.py")
             )
-
-            check_stdout = await check.stdout.read.aio()
-            check_stderr = await check.stderr.read.aio()
-            check_returncode = await check.wait.aio()
-
-            if check_returncode != 0:
-                return (f"Python SyntaxError:{check_stderr or check_stdout}")
+            logger.info("MODAL | Dataset and script uploaded")
 
             logger.info("MODAL | Executing analysis")
-
             process = await sb.exec.aio(
                 "python",
                 "/tmp/analysis.py",
@@ -164,27 +143,23 @@ print()
             logger.info("MODAL | Execution completed | returncode=%s | duration=%.2fs", returncode, duration)
 
             if returncode != 0:
-                return (f"Error executing Vulnerabilities analysis. Details:\n{stderr or stdout}")
+                return f"Error executing Vulnerabilities analysis. Details:\n{stderr or stdout}"
 
             output = stdout.strip()
-
             if not output:
                 output = "Kode berhasil dieksekusi tanpa output print."
 
-            return (
-                f"{output}\n\nExecution time: {duration:.2f} seconds")
+            return f"{output}\n\nExecution time: {duration:.2f} seconds"
 
         except Exception as e:
             logger.exception("Modal execution failed")
-
-            return (f"Error executing Python code: ({type(e).__name__}): {str(e)}")
+            return f"Error executing Python code: ({type(e).__name__}): {str(e)}"
 
         finally:
             if sb is not None:
                 try:
                     await sb.terminate.aio()
                     logger.info("MODAL | Sandbox terminated")
-
                 except Exception:
                     logger.exception("MODAL | Failed to terminate sandbox")
 

@@ -10,6 +10,7 @@ import time
 from contextvars import ContextVar
 from agent import get_active_agent, init_agent, shutdown_agent, trim_agent_history
 from dotenv import load_dotenv
+from langchain_core.messages import RemoveMessage
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile, status, Request, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import StreamingResponse
@@ -242,6 +243,30 @@ async def iterate_with_timeout(async_iterable, timeout):
         if aclose:
             await aclose()
 
+async def _rollback_failed_turn(agent, config: dict, healthy_message_ids: set, request_id: str | None = None):
+    try:
+        failed_snapshot = await agent.aget_state(config)
+        failed_messages = (
+            failed_snapshot.values.get("messages", [])
+            if failed_snapshot and failed_snapshot.values
+            else []
+        )
+
+        messages_to_remove = [
+            RemoveMessage(id=m.id)
+            for m in failed_messages
+            if getattr(m, "id", None) and m.id not in healthy_message_ids
+        ]
+
+        if messages_to_remove:
+            await agent.aupdate_state(config, {"messages": messages_to_remove})
+            logger.info(
+                f"CHECKPOINT ROLLBACK | request_id={request_id} | "
+                f"removed_messages={len(messages_to_remove)}"
+            )
+    except Exception:
+        logger.exception(f"CHECKPOINT ROLLBACK FAILED | request_id={request_id}")
+
 async def stream_agent_response(
     user_input: str,
     thread_id: str,
@@ -297,10 +322,26 @@ async def stream_agent_response(
 
     llm_call_count = 0
     llm_usage_missing = 0
+    healthy_message_ids = set()
 
     try:
         await trim_agent_history(config)
-        
+        snapshot = await agent.aget_state(config)
+        existing_messages = (
+            snapshot.values.get("messages", [])
+            if snapshot and snapshot.values
+            else []
+        )
+
+        if existing_messages:
+            last_msg = existing_messages[-1]
+            if getattr(last_msg, "tool_calls", None) and getattr(last_msg, "id", None):
+                logger.warning(f"DANGLING TOOL_CALLS CLEANUP | request_id={request_id} | thread_id={thread_id}")
+                await agent.aupdate_state(config, {"messages": [RemoveMessage(id=last_msg.id)]})
+                existing_messages = existing_messages[:-1]
+
+        healthy_message_ids = {m.id for m in existing_messages if getattr(m, "id", None)}
+
         async for event in iterate_with_timeout(
             agent.astream_events(
                 inputs,
@@ -357,7 +398,6 @@ async def stream_agent_response(
 
                 if run:
                     duration = time.perf_counter() - run["start_time"]
-
                     output = data.get("output")
 
                     actual_model = (
@@ -389,20 +429,16 @@ async def stream_agent_response(
                             f"output_tokens={output_tokens} | "
                             f"total_tokens={total_tokens}"
                         )
-
                     else:
                         llm_usage_missing += 1
-
                         logger.warning(f"LLM TOKEN USAGE MISSING | request_id={request_id} | run_id={model_run_id} | model={actual_model}")
 
                     llm_call_count += 1
-
                     logger.info(f"LLM END | request_id={request_id} | run_id={model_run_id} | model={actual_model} | duration={duration:.3f}s")
 
             elif event_type == "on_chat_model_error":
                 model_run_id = str(event.get("run_id", ""))
                 run = model_runs.pop(model_run_id, None)
-
                 logger.error(f"LLM ERROR | request_id={request_id} | run_id={model_run_id} | error={str(event.get('data', {}).get('error'))[:500]}")
 
             elif event_type == "on_tool_end":
@@ -420,7 +456,6 @@ async def stream_agent_response(
                     tool_duration.record(duration, attributes)
 
                     logger.info(f"MCP TOOL END | request_id={request_id} | tool={run['tool_name']} | run_id={run_id} | duration={duration:.3f}s | status=success")
-
                 else:
                     logger.warning(f"MCP TOOL END WITHOUT START | request_id={request_id} | tool={tool_name} | run_id={run_id}")
 
@@ -436,9 +471,7 @@ async def stream_agent_response(
 
                     run["span"].set_attribute("mcp.tool.status", "error")
                     if error:
-                        run["span"].set_attribute(
-                            "error.message",
-                            str(error)[:500])
+                        run["span"].set_attribute("error.message", str(error)[:500])
                         if isinstance(error, BaseException):
                             run["span"].record_exception(error)
 
@@ -449,24 +482,24 @@ async def stream_agent_response(
                     tool_duration.record(duration, attributes)
 
                     logger.error(f"MCP TOOL ERROR | request_id={request_id} | tool={run['tool_name']} | run_id={run_id} | duration={duration:.3f}s | error={str(error)[:500]}")
-                
                 else:
                     logger.error(f"MCP TOOL ERROR WITHOUT START | request_id={request_id} | tool={tool_name} | run_id={run_id} | error={str(error)[:500]}")
-
+            
             elif event_type == "on_chat_model_stream":
                 chunk = data.get("chunk")
                 content = getattr(chunk, "content", None)
-
+                
                 if content and not first_token_logged:
                     first_token_logged = True
                     log_stage(
                         request_id or "unknown",
                         "first_model_token",
                         agent_started)
-
+                    
                 if isinstance(content, str):
                     if content:
                         yield content
+                        
                 elif isinstance(content, list):
                     for block in content:
                         if (
@@ -475,42 +508,42 @@ async def stream_agent_response(
                             and block.get("text")
                         ):
                             yield block["text"]
-
+                            
     except asyncio.TimeoutError:
         logger.warning(f"AGENT TIMEOUT | request_id={request_id} | timeout={TIMEOUT_SECONDS}s")
+        
+        await _rollback_failed_turn(agent, config, healthy_message_ids, request_id)
         yield "\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu"
-
+    
     except Exception as e:
+        await _rollback_failed_turn(agent, config, healthy_message_ids, request_id)
         if "recursion limit" in str(e).lower():
             logger.warning(f"AGENT RECURSION LIMIT | request_id={request_id}")
-            yield (
-                "\n\nSistem Memotong Eksekusi Paksa:\nProses analisis data terlalu panjang dan berputar-putar")
+            yield ("\n\nSistem Memotong Eksekusi Paksa:\nProses analisis data terlalu panjang dan berputar-putar")
+            
         else:
             logger.exception(f"AGENT ERROR | request_id={request_id}")
             yield f"\n\n[Sistem Error]: {str(e)}"
-
+            
     finally:
         for run_id, run in list(tool_runs.items()):
             duration = time.perf_counter() - run["start_time"]
             attributes = {
                 "mcp.tool.name": run["tool_name"],
                 "mcp.tool.status": "interrupted"}
-
-            run["span"].set_attribute(
-                "mcp.tool.status",
-                "interrupted")
             
+            run["span"].set_attribute("mcp.tool.status", "interrupted")
             run["span"].end()
             tool_calls.add(1, attributes)
             tool_duration.record(duration, attributes)
-
+            
             logger.warning(
                 f"MCP TOOL INTERRUPTED | request_id={request_id} | "
                 f"tool={run['tool_name']} | run_id={run_id} | "
                 f"duration={duration:.3f}s")
-
+            
         tool_runs.clear()
-
+        
         logger.info(
             f"LLM REQUEST TOKEN SUMMARY | request_id={request_id} | "
             f"llm_calls={llm_call_count} | "
@@ -519,11 +552,309 @@ async def stream_agent_response(
             f"total_tokens={token_totals['total_tokens']} | "
             f"usage_missing={llm_usage_missing}"
         )
-
+        
         log_stage(
             request_id or "unknown",
             "agent_stream",
             agent_started)
+
+# async def stream_agent_response(
+#     user_input: str,
+#     thread_id: str,
+#     filename: str | None = None,
+#     topic_probability: float | None = None,
+#     request_id: str | None = None
+# ):
+#     if (
+#         isinstance(topic_probability, bool)
+#         or not isinstance(topic_probability, (int, float))
+#         or not math.isfinite(topic_probability)
+#         or not 0 <= topic_probability <= 1
+#     ):
+#         raise ValueError("Invalid topic probability")
+
+#     if topic_probability < 0.50:
+#         logger.info(
+#             f"GUARDRAIL REJECTED | request_id={request_id} | "
+#             f"probability={topic_probability:.4f}")
+#         yield "Maaf saya hanya dapat membantu pertanyaan seputar Transmisi Tower Listrik"
+#         return
+
+#     logger.info(
+#         f"GUARDRAIL PASSED | request_id={request_id} | "
+#         f"probability={topic_probability:.4f}")
+
+#     TIMEOUT_SECONDS = 300
+#     agent_started = time.perf_counter()
+#     agent = get_active_agent()
+#     messages = []
+#     tool_runs = {}
+
+#     if filename:
+#         messages.append((
+#             "system",
+#             f"[INFO SISTEM]: Pengguna mengunggah file '{filename}'.\n"
+#             f"Gunakan `get_dataset_schema(filename='{filename}')` jika perlu"))
+
+#     messages.append(("user", user_input))
+#     inputs = {"messages": messages}
+#     config = {
+#         "configurable": {"thread_id": thread_id},
+#         "recursion_limit": 12}
+
+#     first_token_logged = False
+#     model_runs = {}
+
+#     token_totals = {
+#         "input_tokens": 0,
+#         "output_tokens": 0,
+#         "total_tokens": 0
+#     }
+
+#     llm_call_count = 0
+#     llm_usage_missing = 0
+
+#     try:
+#         await trim_agent_history(config)
+#         snapshot = await agent.agent_stated(config)
+#         existing_messages = (
+#             snapshot.values.get("messages", [])
+#             if snapshot and snapshot.values
+#             else []
+#         )
+
+#         if existing_messages:
+#             last_msg = existing_messages[-1]
+#             if getattr(last_msg, "tool_calls", None) and getattr(last_msg, "id", None):
+#                 logger.warning(f"DANGLING TOOL_CALLS CLEANUP | request_id={request_id} | thread_id={thread_id}")
+#                 await agent.aupdate_state(config, {"messages": [RemoveMessage(id=last_msg.id)]})
+#                 existing_messages = existing_messages[:-1]
+
+#         healthy_message_ids = {m.id for m in existing_messages if getattr(m, "id", None)}
+        
+#         async for event in iterate_with_timeout(
+#             agent.astream_events(
+#                 inputs,
+#                 config=config,
+#                 version="v2"
+#             ),
+#             TIMEOUT_SECONDS
+#         ):
+#             event_type = event.get("event")
+#             tool_name = event.get("name", "unknown_tool")
+#             run_id = str(event.get("run_id", ""))
+#             data = event.get("data", {})
+
+#             if event_type == "on_tool_start":
+#                 tool_started = time.perf_counter()
+#                 span = tracer.start_span(name=f"mcp.tool.{tool_name}")
+#                 span.set_attribute("mcp.tool.name", tool_name)
+#                 span.set_attribute("mcp.tool.run_id", run_id)
+
+#                 tool_runs[run_id] = {
+#                     "span": span,
+#                     "start_time": tool_started,
+#                     "tool_name": tool_name}
+
+#                 tool_input = data.get("input", {})
+#                 input_keys = (
+#                     list(tool_input.keys())
+#                     if isinstance(tool_input, dict)
+#                     else [])
+
+#                 logger.info(
+#                     f"MCP TOOL START | request_id={request_id} | "
+#                     f"tool={tool_name} | run_id={run_id} | "
+#                     f"input_keys={input_keys}")
+
+#             elif event_type == "on_chat_model_start":
+#                 model_run_id = str(event.get("run_id", ""))
+
+#                 model_name = (
+#                     event.get("metadata", {}).get("ls_model_name")
+#                     or "unknown")
+
+#                 model_runs[model_run_id] = {
+#                     "start_time": time.perf_counter(),
+#                     "model_name": model_name}
+
+#                 logger.info(
+#                     f"LLM START | request_id={request_id} | "
+#                     f"run_id={model_run_id} | model={model_name}")
+
+#             elif event_type == "on_chat_model_end":
+#                 model_run_id = str(event.get("run_id", ""))
+#                 run = model_runs.pop(model_run_id, None)
+
+#                 if run:
+#                     duration = time.perf_counter() - run["start_time"]
+
+#                     output = data.get("output")
+
+#                     actual_model = (
+#                         getattr(output, "response_metadata", {}).get("model_name")
+#                         or getattr(output, "response_metadata", {}).get("model")
+#                         or run["model_name"]
+#                     )
+
+#                     usage = extract_token_usage(output)
+
+#                     if usage:
+#                         input_tokens = usage["input_tokens"]
+#                         output_tokens = usage["output_tokens"]
+#                         total_tokens = usage["total_tokens"]
+
+#                         if input_tokens is not None:
+#                             token_totals["input_tokens"] += input_tokens
+
+#                         if output_tokens is not None:
+#                             token_totals["output_tokens"] += output_tokens
+
+#                         if total_tokens is not None:
+#                             token_totals["total_tokens"] += total_tokens
+
+#                         logger.info(
+#                             f"LLM TOKEN USAGE | request_id={request_id} | "
+#                             f"run_id={model_run_id} | model={actual_model} | "
+#                             f"input_tokens={input_tokens} | "
+#                             f"output_tokens={output_tokens} | "
+#                             f"total_tokens={total_tokens}"
+#                         )
+
+#                     else:
+#                         llm_usage_missing += 1
+
+#                         logger.warning(f"LLM TOKEN USAGE MISSING | request_id={request_id} | run_id={model_run_id} | model={actual_model}")
+
+#                     llm_call_count += 1
+
+#                     logger.info(f"LLM END | request_id={request_id} | run_id={model_run_id} | model={actual_model} | duration={duration:.3f}s")
+
+#             elif event_type == "on_chat_model_error":
+#                 model_run_id = str(event.get("run_id", ""))
+#                 run = model_runs.pop(model_run_id, None)
+
+#                 logger.error(f"LLM ERROR | request_id={request_id} | run_id={model_run_id} | error={str(event.get('data', {}).get('error'))[:500]}")
+
+#             elif event_type == "on_tool_end":
+#                 run = tool_runs.pop(run_id, None)
+
+#                 if run:
+#                     duration = time.perf_counter() - run["start_time"]
+#                     attributes = {
+#                         "mcp.tool.name": run["tool_name"],
+#                         "mcp.tool.status": "success"}
+
+#                     run["span"].set_attribute("mcp.tool.status", "success")
+#                     run["span"].end()
+#                     tool_calls.add(1, attributes)
+#                     tool_duration.record(duration, attributes)
+
+#                     logger.info(f"MCP TOOL END | request_id={request_id} | tool={run['tool_name']} | run_id={run_id} | duration={duration:.3f}s | status=success")
+
+#                 else:
+#                     logger.warning(f"MCP TOOL END WITHOUT START | request_id={request_id} | tool={tool_name} | run_id={run_id}")
+
+#             elif event_type == "on_tool_error":
+#                 run = tool_runs.pop(run_id, None)
+#                 error = data.get("error")
+
+#                 if run:
+#                     duration = time.perf_counter() - run["start_time"]
+#                     attributes = {
+#                         "mcp.tool.name": run["tool_name"],
+#                         "mcp.tool.status": "error"}
+
+#                     run["span"].set_attribute("mcp.tool.status", "error")
+#                     if error:
+#                         run["span"].set_attribute(
+#                             "error.message",
+#                             str(error)[:500])
+#                         if isinstance(error, BaseException):
+#                             run["span"].record_exception(error)
+
+#                     run["span"].set_status(Status(StatusCode.ERROR))
+#                     run["span"].end()
+#                     tool_calls.add(1, attributes)
+#                     tool_errors.add(1, attributes)
+#                     tool_duration.record(duration, attributes)
+
+#                     logger.error(f"MCP TOOL ERROR | request_id={request_id} | tool={run['tool_name']} | run_id={run_id} | duration={duration:.3f}s | error={str(error)[:500]}")
+                
+#                 else:
+#                     logger.error(f"MCP TOOL ERROR WITHOUT START | request_id={request_id} | tool={tool_name} | run_id={run_id} | error={str(error)[:500]}")
+
+#             elif event_type == "on_chat_model_stream":
+#                 chunk = data.get("chunk")
+#                 content = getattr(chunk, "content", None)
+
+#                 if content and not first_token_logged:
+#                     first_token_logged = True
+#                     log_stage(
+#                         request_id or "unknown",
+#                         "first_model_token",
+#                         agent_started)
+
+#                 if isinstance(content, str):
+#                     if content:
+#                         yield content
+#                 elif isinstance(content, list):
+#                     for block in content:
+#                         if (
+#                             isinstance(block, dict)
+#                             and block.get("type") == "text"
+#                             and block.get("text")
+#                         ):
+#                             yield block["text"]
+
+#     except asyncio.TimeoutError:
+#         logger.warning(f"AGENT TIMEOUT | request_id={request_id} | timeout={TIMEOUT_SECONDS}s")
+#         yield "\n[Sistem]: Proses analisis dihentikan karena melebihi batas waktu"
+
+#     except Exception as e:
+#         if "recursion limit" in str(e).lower():
+#             logger.warning(f"AGENT RECURSION LIMIT | request_id={request_id}")
+#             yield (
+#                 "\n\nSistem Memotong Eksekusi Paksa:\nProses analisis data terlalu panjang dan berputar-putar")
+#         else:
+#             logger.exception(f"AGENT ERROR | request_id={request_id}")
+#             yield f"\n\n[Sistem Error]: {str(e)}"
+
+#     finally:
+#         for run_id, run in list(tool_runs.items()):
+#             duration = time.perf_counter() - run["start_time"]
+#             attributes = {
+#                 "mcp.tool.name": run["tool_name"],
+#                 "mcp.tool.status": "interrupted"}
+
+#             run["span"].set_attribute(
+#                 "mcp.tool.status",
+#                 "interrupted")
+            
+#             run["span"].end()
+#             tool_calls.add(1, attributes)
+#             tool_duration.record(duration, attributes)
+
+#             logger.warning(
+#                 f"MCP TOOL INTERRUPTED | request_id={request_id} | "
+#                 f"tool={run['tool_name']} | run_id={run_id} | "
+#                 f"duration={duration:.3f}s")
+
+#         tool_runs.clear()
+
+#         logger.info(
+#             f"LLM REQUEST TOKEN SUMMARY | request_id={request_id} | "
+#             f"llm_calls={llm_call_count} | "
+#             f"input_tokens={token_totals['input_tokens']} | "
+#             f"output_tokens={token_totals['output_tokens']} | "
+#             f"total_tokens={token_totals['total_tokens']} | "
+#             f"usage_missing={llm_usage_missing}"
+#         )
+
+#         log_stage(
+#             request_id or "unknown",
+#             "agent_stream",
+#             agent_started)
 
 thread_id_var: ContextVar[str] = ContextVar("thread_id_var")
 

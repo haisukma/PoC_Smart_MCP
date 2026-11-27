@@ -20,7 +20,7 @@ def register_vulnerabilities_report_tools(mcp):
     @mcp.tool()
     async def execute_vulnerabilities_report_analysis(code: str) -> str:
         """
-        Gunakan tool ini untuk menganalisis rekapitulasi / pivot data potensi kerawanan transmisi per UPT.
+        Gunakan tool ini untuk menganalisis REKAPITULASI / RINGKASAN data potensi kerawanan transmisi per UPT.
 
         Kategori kerawanan yang dirangkum meliputi:
 
